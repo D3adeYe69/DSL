@@ -8,34 +8,28 @@ class TokenType(Enum):
     CONNECT = auto()
     SUBCIRCUIT = auto()
     SIMULATE = auto()
-    CONDITIONAL = auto()
-    LOOP = auto()
-    OPERATOR = auto()
     SYMBOL = auto()
     UNIT = auto()
     KEYWORD = auto()
     EOF = auto()
 
 TOKEN_REGEX = [
-    (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*'),
-    (TokenType.NUMBER, r'\d+(\.\d+)?([eE][+-]?\d+)?'),
     (TokenType.COMPONENT, r'Resistor|Capacitor|Inductor|VoltageSource|CurrentSource'),
     (TokenType.CONNECT, r'Connect'),
     (TokenType.SUBCIRCUIT, r'Subcircuit'),
     (TokenType.SIMULATE, r'Simulate'),
-    (TokenType.CONDITIONAL, r'If|Else'),
-    (TokenType.LOOP, r'For'),
+    (TokenType.KEYWORD, r'dc|transient|ac'),
     (TokenType.UNIT, r'ohm|uF|mH|V|A'),
-    (TokenType.OPERATOR, r'='),
+    (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*'),
+    (TokenType.NUMBER, r'\d+(\.\d+)?([eE][+-]?\d+)?'),
     (TokenType.SYMBOL, r'[();{},.]'),
-    (TokenType.KEYWORD, r'from|to|step|dc|transient|ac'),
 ]
 
 class Token:
     def __init__(self, type_, value):
         self.type = type_
         self.value = value
-    
+
     def __repr__(self):
         return f'Token({self.type}, {repr(self.value)})'
 
@@ -46,7 +40,7 @@ class Lexer:
         self.position = 0
 
     def tokenize(self):
-        code = self.source_code.strip()  # Remove leading/trailing whitespace
+        code = self.source_code.strip()
         while code:
             match = None
             for token_type, regex in TOKEN_REGEX:
@@ -58,19 +52,6 @@ class Lexer:
                     code = code[len(value):].lstrip()
                     break
             if not match:
-                raise SyntaxError(f'Unexpected token: {repr(code[:10])}...')  # Show first 10 chars
+                raise SyntaxError(f'Unexpected token: {repr(code[:10])}...')
         self.tokens.append(Token(TokenType.EOF, None))
         return self.tokens
-
-
-# Example Usage
-if __name__ == "__main__":
-    source = """
-    Resistor R1(10 ohm);
-    Connect(R1.positive, V1);
-    Simulate { dc; transient(0, 10, 0.1); }
-    """
-    lexer = Lexer(source)
-    tokens = lexer.tokenize()
-    for token in tokens:
-        print(token)
