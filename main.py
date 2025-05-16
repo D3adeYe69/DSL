@@ -1,186 +1,97 @@
-from dataclasses import dataclass
-from typing import List, Union
-from lexer import Lexer, Token, TokenType
+# main.py
+import argparse
+import os
+import sys
 
-@dataclass
-class ComponentDeclaration:
-    type: str
-    name: str
-    value: float
-    unit: str
+from lexer import Lexer
+from parser import Parser
+from interpreter import Interpreter
 
-@dataclass
-class Connection:
-    components: List[str]
-    nodes: List[str]
+try:
+    from graphviz import Graph, Digraph
+except ImportError:
+    print("Error: graphviz Python package not found.  Install with `pip install graphviz`.", file=sys.stderr)
+    sys.exit(1)
 
-@dataclass
-class SimulationCommand:
-    type: str
-    parameters: List[Union[float, str]]
+def draw_circuit(program, output_path):
+    # Determine format from extension:
+    base, ext = os.path.splitext(output_path)
+    fmt = ext.lstrip('.')
+    # use an undirected graph
+    g = Graph(format=fmt)
+    # Create a junction counter
+    conn_count = 0
 
-@dataclass
-class SimulationBlock:
-    commands: List[SimulationCommand]
+    # 1) add component nodes
+    for comp in program.components:
+        # label: {+ | NAME\nVALUE UNIT | -}
+        label = f"{{+ | {comp.name}\\n{comp.value}{comp.unit} | -}}"
+        g.node(comp.name, shape='record', label=label)
 
-@dataclass
-class Subcircuit:
-    name: str
-    components: List[ComponentDeclaration]
-    connections: List[Connection]
-    simulations: List[SimulationBlock]
+    # 2) add literal nodes (ground/node) later on demand
 
-@dataclass
-class Program:
-    components: List[ComponentDeclaration]
-    connections: List[Connection]
-    simulations: List[SimulationBlock]
-    subcircuits: List[Subcircuit]
-
-class Parser:
-    def __init__(self, tokens):
-        self.tokens = tokens
-        self.current_token = None
-        self.token_index = -1
-        self.advance()
-
-    def advance(self):
-        self.token_index += 1
-        if self.token_index < len(self.tokens):
-            self.current_token = self.tokens[self.token_index]
-        else:
-            self.current_token = Token(TokenType.EOF, None)
-
-    def consume(self, token_type, value=None):
-        if self.current_token.type == token_type:
-            if value is None or self.current_token.value == value:
-                token = self.current_token
-                self.advance()
-                return token
-        raise SyntaxError(f"Expected {token_type} {value if value else ''}, got {self.current_token}")
-
-    def parse(self):
-        components = []
-        connections = []
-        simulations = []
-        subcircuits = []
-
-        while self.current_token.type != TokenType.EOF:
-            if self.current_token.type == TokenType.COMPONENT:
-                components.append(self.parse_component())
-            elif self.current_token.value == "Connect":
-                connections.append(self.parse_connection())
-            elif self.current_token.value == "Simulate":
-                simulations.append(self.parse_simulation())
-            elif self.current_token.value == "Subcircuit":
-                subcircuits.append(self.parse_subcircuit())
+    # 3) process each connection
+    for conn in program.connections:
+        endpoints = conn.endpoints
+        # build endpoint identifiers
+        pts = []
+        for ep in endpoints:
+            if isinstance(ep, str):
+                # literal node: create if not exists
+                nodename = ep
+                if not g.node(nodename):
+                    # ground as special shape?
+                    g.node(nodename, shape='circle', label=nodename, width='0.2', fixedsize='true')
+                pts.append(nodename)
             else:
-                raise SyntaxError(f"Unexpected token: {self.current_token}")
+                # ComponentTerminal
+                comp, term = ep.component, ep.terminal
+                port = {'positive': '+', 'negative': '-'}[term]
+                # Graphviz record ports: comp:+ or comp:-
+                pts.append(f"{comp}:{ 'pos' if term=='positive' else 'neg' }")
+        # if exactly 2, draw a direct edge
+        if len(pts) == 2:
+            g.edge(pts[0], pts[1])
+        else:
+            # create a tiny hidden junction node
+            jn = f"J{conn_count}"
+            conn_count += 1
+            g.node(jn, shape='point', width='0.1')
+            for p in pts:
+                g.edge(jn, p)
 
-        return Program(components, connections, simulations, subcircuits)
+    # render
+    g.render(filename=base, cleanup=True)
+    print(f"Diagram written to {output_path}")
 
-    def parse_component(self):
-        component_type = self.consume(TokenType.COMPONENT).value
-        name = self.consume(TokenType.IDENTIFIER).value
-        self.consume(TokenType.SYMBOL, "(")
-        value = float(self.consume(TokenType.NUMBER).value)
-        unit = self.consume(TokenType.UNIT).value
-        self.consume(TokenType.SYMBOL, ")")
-        self.consume(TokenType.SYMBOL, ";")
-        return ComponentDeclaration(component_type, name, value, unit)
+def main():
+    p = argparse.ArgumentParser(
+        description="Parse a .dsl circuit and emit a SPICE netlist + connection diagram"
+    )
+    p.add_argument("input_file", help="Path to .dsl source")
+    p.add_argument("output_file", help="Path to write diagram (png/svg/pdf, etc.)")
+    args = p.parse_args()
 
-    def parse_connection(self):
-        self.consume(TokenType.CONNECT)
-        self.consume(TokenType.SYMBOL, "(")
-        components = []
-        nodes = []
-        components.append(self.consume(TokenType.IDENTIFIER).value)
-        self.consume(TokenType.SYMBOL, ".")
-        nodes.append(self.consume(TokenType.IDENTIFIER).value)
+    # read source
+    try:
+        src = open(args.input_file, encoding='utf-8').read()
+    except OSError as e:
+        print(f"Error reading {args.input_file}: {e}", file=sys.stderr)
+        sys.exit(1)
 
-        while self.current_token.value == ",":
-            self.consume(TokenType.SYMBOL, ",")
-            components.append(self.consume(TokenType.IDENTIFIER).value)
-            self.consume(TokenType.SYMBOL, ".")
-            nodes.append(self.consume(TokenType.IDENTIFIER).value)
+    # lex & parse
+    try:
+        tokens = Lexer(src).tokenize()
+        program = Parser(tokens).parse()
+    except SyntaxError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
-        self.consume(TokenType.SYMBOL, ")")
-        self.consume(TokenType.SYMBOL, ";")
-        return Connection(components, nodes)
+    # print netlist
+    Interpreter(program).run()
 
-    def parse_simulation(self):
-        self.consume(TokenType.SIMULATE)
-        self.consume(TokenType.SYMBOL, "{")
-        commands = []
+    # draw diagram
+    draw_circuit(program, args.output_file)
 
-        while self.current_token.value != "}":
-            sim_type = self.consume(TokenType.KEYWORD).value
-            params = []
-            if self.current_token.value == "(":
-                self.consume(TokenType.SYMBOL, "(")
-                if self.current_token.type == TokenType.NUMBER:
-                    params.append(float(self.consume(TokenType.NUMBER).value))
-                else:
-                    params.append(self.consume(TokenType.KEYWORD).value)
-
-                while self.current_token.value == ",":
-                    self.consume(TokenType.SYMBOL, ",")
-                    if self.current_token.type == TokenType.NUMBER:
-                        params.append(float(self.consume(TokenType.NUMBER).value))
-                    else:
-                        params.append(self.consume(TokenType.KEYWORD).value)
-
-                self.consume(TokenType.SYMBOL, ")")
-
-            self.consume(TokenType.SYMBOL, ";")
-            commands.append(SimulationCommand(sim_type, params))
-
-        self.consume(TokenType.SYMBOL, "}")
-        return SimulationBlock(commands)
-
-# Example Usage
 if __name__ == "__main__":
-    source = """
-    Resistor R1(10 ohm);
-    Capacitor C1(1 uF);
-    Connect(R1.positive, C1.negative);
-    Simulate { dc; transient(0, 10, 0.1); }
-    """
-
-    lexer = Lexer(source)
-    tokens = lexer.tokenize()
-    parser = Parser(tokens)
-    ast = parser.parse()
-    print(ast)
-
-def format_ast(program: Program, indent=0):
-    space = " " * indent
-    result = f"\n{space}Formatted Program:\n"
-
-    if program.components:
-        result += f"{space}  Components:\n"
-        for component in program.components:
-            result += f"{space}    - {component.type} {component.name} ({component.value} {component.unit})\n"
-
-    if program.connections:
-        result += f"{space}  Connections:\n"
-        for connection in program.connections:
-            result += f"{space}    - {', '.join(connection.components)} -> {', '.join(connection.nodes)}\n"
-
-    if program.simulations:
-        result += f"{space}  Simulations:\n"
-        for sim in program.simulations:
-            for cmd in sim.commands:
-                params = ", ".join(map(str, cmd.parameters))
-                result += f"{space}    - {cmd.type}({params})\n"
-
-    if program.subcircuits:
-        result += f"{space}  Subcircuits:\n"
-        for sub in program.subcircuits:
-            result += f"{space}    - {sub.name}:\n"
-            result += format_ast(sub, indent + 2)
-
-    return result
-
-# Print the formatted output
-print(format_ast(ast))
+    main()

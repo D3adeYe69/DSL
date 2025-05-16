@@ -1,57 +1,83 @@
 import re
 from enum import Enum, auto
+from dataclasses import dataclass
+from typing import List
 
 class TokenType(Enum):
-    IDENTIFIER = auto()
-    NUMBER = auto()
-    COMPONENT = auto()
-    CONNECT = auto()
-    SUBCIRCUIT = auto()
-    SIMULATE = auto()
-    SYMBOL = auto()
-    UNIT = auto()
-    KEYWORD = auto()
-    EOF = auto()
+    IDENTIFIER    = auto()
+    NUMBER        = auto()
+    COMPONENT     = auto()
+    CONNECT       = auto()
+    SUBCIRCUIT    = auto()
+    SIMULATE      = auto()
+    SYMBOL        = auto()
+    OPERATOR      = auto()
+    LAW           = auto()
+    WIRE          = auto()
+    GROUND        = auto()
+    NODE          = auto()
+    UNIT          = auto()
+    KEYWORD       = auto()
+    EOF           = auto()
 
-TOKEN_REGEX = [
-    (TokenType.COMPONENT, r'Resistor|Capacitor|Inductor|VoltageSource|CurrentSource'),
-    (TokenType.CONNECT, r'Connect'),
-    (TokenType.SUBCIRCUIT, r'Subcircuit'),
-    (TokenType.SIMULATE, r'Simulate'),
-    (TokenType.KEYWORD, r'dc|transient|ac'),
-    (TokenType.UNIT, r'ohm|uF|mH|V|A'),
-    (TokenType.IDENTIFIER, r'[a-zA-Z_][a-zA-Z0-9_]*'),
-    (TokenType.NUMBER, r'\d+(\.\d+)?([eE][+-]?\d+)?'),
-    (TokenType.SYMBOL, r'[();{},.]'),
+# Token regex specification
+TOKEN_SPECIFICATION = [
+    ('COMPONENT',  r'\b(?:Resistor|Capacitor|Inductor|VoltageSource|CurrentSource)\b'),
+    ('WIRE',       r'\bWire\b'),
+    ('CONNECT',    r'\bConnect\b'),
+    ('SUBCIRCUIT', r'\bSubcircuit\b'),
+    ('SIMULATE',   r'\bSimulate\b'),
+    ('LAW',        r'\b(?:OhmLaw|KCL|KVL)\b'),
+    ('GROUND',     r'\bground\b'),
+    ('NODE',       r'\bnode\b'),
+    ('KEYWORD',    r'\b(?:dc|transient|ac)\b'),
+    ('UNIT',       r'\b(?:ohm|uF|mH|V|A|mA|kOhm)\b'),
+    ('NUMBER',     r'\d+(?:\.\d+)?(?:[eE][+-]?\d+)?'),
+    ('IDENTIFIER', r'[A-Za-z_][A-Za-z0-9_]*'),
+    ('OPERATOR',   r'[+\-*/=]'),
+    ('SYMBOL',     r'[(),;{}\.\}]'),
+    ('SKIP',       r'[ \t\r\n]+'),
+    ('MISMATCH',   r'.'),
 ]
+_master_regex = '|'.join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPECIFICATION)
+_token_re = re.compile(_master_regex)
 
+@dataclass
 class Token:
-    def __init__(self, type_, value):
-        self.type = type_
-        self.value = value
-
-    def __repr__(self):
-        return f'Token({self.type}, {repr(self.value)})'
+    type: TokenType
+    value: str
+    line: int
+    column: int
 
 class Lexer:
-    def __init__(self, source_code):
-        self.source_code = source_code
-        self.tokens = []
-        self.position = 0
+    def __init__(self, code: str):
+        self.code = code
 
-    def tokenize(self):
-        code = self.source_code.strip()
-        while code:
-            match = None
-            for token_type, regex in TOKEN_REGEX:
-                pattern = re.compile(r'^' + regex)
-                match = pattern.match(code)
-                if match:
-                    value = match.group(0)
-                    self.tokens.append(Token(token_type, value))
-                    code = code[len(value):].lstrip()
-                    break
-            if not match:
-                raise SyntaxError(f'Unexpected token: {repr(code[:10])}...')
-        self.tokens.append(Token(TokenType.EOF, None))
-        return self.tokens
+    def tokenize(self) -> List[Token]:
+        tokens: List[Token] = []
+        line = 1
+        col = 1
+        pos = 0
+        for mo in _token_re.finditer(self.code):
+            kind = mo.lastgroup
+            value = mo.group()
+            start = mo.start()
+            segment = self.code[pos:start]
+            # update line/col based on skipped text
+            newlines = segment.count('\n')
+            if newlines > 0:
+                line += newlines
+                col = start - segment.rfind('\n')
+            else:
+                col += len(segment)
+            if kind == 'SKIP':
+                pos = mo.end()
+                continue
+            if kind == 'MISMATCH':
+                raise SyntaxError(f"Unexpected token {value!r} at line {line}, column {col}")
+            token_type = TokenType[kind]
+            tokens.append(Token(token_type, value, line, col))
+            pos = mo.end()
+            col += len(value)
+        tokens.append(Token(TokenType.EOF, '', line, col))
+        return tokens

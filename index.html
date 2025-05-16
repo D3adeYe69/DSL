@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Circuit DSL Editor & Visualizer</title>
+  <style> ... </style>
+</head>
+<body>
+  <textarea id="dsl">Resistor R1(100 ohm);
+VoltageSource V1(9 V);
+Connect(V1.positive, R1.positive, V1.negative, R1.negative);</textarea>
+  <button id="runBtn">Render</button>
+  <svg id="circuit" width="600" height="300"></svg>
+  <script>
+    // parser+draw logic from earlier
+  </script>
+</body>
+</html>
