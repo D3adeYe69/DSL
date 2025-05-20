@@ -14,7 +14,6 @@ COMP_SPACING = 2.0    # horizontal spacing between components on a rail
 SYMBOL_WIDTH = 1.0    # width reserved for each component symbol
 SYMBOL_HEIGHT = 0.6   # height reserved for each component symbol
 
-
 def build_nets(program):
     """
     Build a mapping from net_id (int) to list of endpoints on that net.

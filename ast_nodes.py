@@ -4,7 +4,6 @@ from typing import List, Union
 # ast_nodes.py
 from dataclasses import dataclass
 from typing import List, Union
-
 @dataclass
 class ComponentDeclaration:
     type: str

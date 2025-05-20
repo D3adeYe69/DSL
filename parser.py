@@ -13,7 +13,6 @@ class Parser:
         self.index = -1
         self.current: Token = None
         self.advance()
-
     def advance(self):
         self.index += 1
         self.current = (

@@ -4,7 +4,6 @@ from ast_nodes import (
     Program, ComponentDeclaration, ComponentTerminal,
     Connection, SimulationBlock, Subcircuit
 )
-
 class Interpreter:
     def __init__(self, program: Program):
         self.program = program

@@ -19,7 +19,6 @@ class TokenType(Enum):
     UNIT          = auto()
     KEYWORD       = auto()
     EOF           = auto()
-
 # Token regex specification
 TOKEN_SPECIFICATION = [
     ('COMPONENT',  r'\b(?:Resistor|Capacitor|Inductor|VoltageSource|CurrentSource|Ammeter)\b'),
