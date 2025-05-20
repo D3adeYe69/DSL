@@ -1,6 +1,11 @@
+# parser.py
 from typing import List
+from ast_nodes import (
+    ComponentDeclaration, ComponentTerminal, Connection,
+    SimulationCommand, SimulationBlock, Subcircuit,
+    Program, SubcircuitInstance
+)
 from lexer import Token, TokenType
-from ast_nodes import ComponentDeclaration, ComponentTerminal, Connection, SimulationCommand, SimulationBlock, Subcircuit, Program
 
 class Parser:
     def __init__(self, tokens: List[Token]):
@@ -11,11 +16,11 @@ class Parser:
 
     def advance(self):
         self.index += 1
-        if self.index < len(self.tokens):
-            self.current = self.tokens[self.index]
-        else:
-            # EOF sentinel (line/col not really used for EOF)
-            self.current = Token(TokenType.EOF, '', -1, -1)
+        self.current = (
+            self.tokens[self.index]
+            if self.index < len(self.tokens)
+            else Token(TokenType.EOF, '', -1, -1)
+        )
 
     def consume(self, ttype: TokenType, value: str = None) -> Token:
         if self.current.type == ttype and (value is None or self.current.value == value):
@@ -23,12 +28,12 @@ class Parser:
             self.advance()
             return tok
         raise SyntaxError(
-            f"Expected {ttype.name}{' '+value if value else ''}, got {self.current.value!r} "
-            f"at line {self.current.line}, column {self.current.column}"
+            f"Expected {ttype.name}{' '+value if value else ''}, "
+            f"got {self.current.value!r} at line {self.current.line}, col {self.current.column}"
         )
 
     def parse(self) -> Program:
-        components, connections, simulations, subcircuits = [], [], [], []
+        components, connections, simulations, subcircuits, instances = [], [], [], [], []
         while self.current.type != TokenType.EOF:
             if self.current.type == TokenType.COMPONENT:
                 components.append(self.parse_component())
@@ -38,12 +43,18 @@ class Parser:
                 simulations.append(self.parse_simulation())
             elif self.current.type == TokenType.SUBCIRCUIT:
                 subcircuits.append(self.parse_subcircuit())
+            elif self.current.type == TokenType.IDENTIFIER:
+                # subcircuit instantiation: e.g. OpAmp U1;
+                subckt_name   = self.consume(TokenType.IDENTIFIER).value
+                instance_name = self.consume(TokenType.IDENTIFIER).value
+                self.consume(TokenType.SYMBOL, ';')
+                instances.append(SubcircuitInstance(subckt_name, instance_name))
             else:
                 raise SyntaxError(
                     f"Unexpected token {self.current.value!r} "
-                    f"at line {self.current.line}, column {self.current.column}"
+                    f"at line {self.current.line}, col {self.current.column}"
                 )
-        return Program(components, connections, simulations, subcircuits)
+        return Program(components, connections, simulations, subcircuits, instances)
 
     def parse_component(self) -> ComponentDeclaration:
         ctype = self.consume(TokenType.COMPONENT).value
@@ -60,18 +71,15 @@ class Parser:
         self.consume(TokenType.SYMBOL, '(')
         endpoints = []
         while True:
-            # component.terminal
-            if (self.current.type == TokenType.IDENTIFIER
-                    and self.tokens[self.index + 1].value == '.'):
+            if self.current.type == TokenType.IDENTIFIER \
+               and self.tokens[self.index+1].value == '.':
                 comp = self.consume(TokenType.IDENTIFIER).value
                 self.consume(TokenType.SYMBOL, '.')
                 term = self.consume(TokenType.IDENTIFIER).value
                 endpoints.append(ComponentTerminal(comp, term))
             else:
-                # literal node name or 'ground'
                 endpoints.append(self.current.value)
                 self.advance()
-            # comma-separated?
             if self.current.value == ',':
                 self.consume(TokenType.SYMBOL, ',')
                 continue
@@ -83,30 +91,34 @@ class Parser:
     def parse_simulation(self) -> SimulationBlock:
         self.consume(TokenType.SIMULATE)
         self.consume(TokenType.SYMBOL, '{')
-        commands: List[SimulationCommand] = []
+
+        cmds: List[SimulationCommand] = []
         while self.current.value != '}':
             stype = self.consume(TokenType.KEYWORD).value
-            params = []
+            params: List[Union[float,str]] = []
+            # if there's a parameter list
             if self.current.value == '(':
                 self.consume(TokenType.SYMBOL, '(')
-                while True:
+                # keep reading params until we hit ')'
+                while self.current.value != ')':
                     if self.current.type == TokenType.NUMBER:
                         params.append(float(self.consume(TokenType.NUMBER).value))
                     else:
                         params.append(self.consume(TokenType.KEYWORD).value)
+                    # optionally eat a comma, but don’t require it
                     if self.current.value == ',':
                         self.consume(TokenType.SYMBOL, ',')
-                        continue
-                    break
+                    # if it's neither comma nor ')', we loop again and grab the next token
                 self.consume(TokenType.SYMBOL, ')')
             self.consume(TokenType.SYMBOL, ';')
-            commands.append(SimulationCommand(stype, params))
+            cmds.append(SimulationCommand(stype, params))
         # closing brace
         self.consume(TokenType.SYMBOL, '}')
-        # consume optional semicolon after the block
+        # optional semicolon after block
         if self.current.type == TokenType.SYMBOL and self.current.value == ';':
             self.consume(TokenType.SYMBOL, ';')
-        return SimulationBlock(commands)
+        return SimulationBlock(cmds)
+
 
     def parse_subcircuit(self) -> Subcircuit:
         self.consume(TokenType.SUBCIRCUIT)
@@ -121,10 +133,7 @@ class Parser:
             elif self.current.type == TokenType.SIMULATE:
                 sims.append(self.parse_simulation())
             else:
-                raise SyntaxError(
-                    f"Unexpected token {self.current.value!r} "
-                    f"at line {self.current.line}, column {self.current.column}"
-                )
+                raise SyntaxError(f"Unexpected token {self.current.value!r}")
         self.consume(TokenType.SYMBOL, '}')
         self.consume(TokenType.SYMBOL, ';')
         return Subcircuit(name, comps, conns, sims)
