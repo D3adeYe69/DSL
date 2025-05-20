@@ -14,6 +14,7 @@ COMP_SPACING = 2.0    # horizontal spacing between components on a rail
 SYMBOL_WIDTH = 1.0    # width reserved for each component symbol
 SYMBOL_HEIGHT = 0.6   # height reserved for each component symbol
 
+
 def build_nets(program):
     """
     Build a mapping from net_id (int) to list of endpoints on that net.
@@ -122,7 +123,9 @@ def draw_circuit(program, output_path):
     ax.set_ylim(-1.5, (len(nets)+1)*NET_SPACING)
     ax.axis('off')
     plt.tight_layout()
-    plt.savefig(output_path, bbox_inches='tight')
+    
+    # Save with high DPI for better quality
+    plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close(fig)
     print(f"Diagram saved to {output_path} (orthogonal grid)")
 
