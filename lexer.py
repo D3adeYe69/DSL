@@ -16,7 +16,10 @@ class TokenType(Enum):
     WIRE          = auto()
     GROUND        = auto()
     NODE          = auto()
-    UNIT          = auto()
+   
+    NET           = auto()  
+    UNIT_PREFIX   = auto()  
+    UNIT_BASE     = auto()
     KEYWORD       = auto()
     EOF           = auto()
 
@@ -31,12 +34,16 @@ TOKEN_SPECIFICATION = [
     ('GROUND',     r'\bground\b'),
     ('NODE',       r'\bnode\b'),
     ('KEYWORD',    r'\b(?:dc|transient|ac)\b'),
-    ('UNIT',       r'\b(?:ohm|uF|mH|V|A|mA|kOhm)\b'),
-    ('NUMBER',     r'\d+(?:\.\d+)?(?:[eE][+-]?\d+)?'),
+    ('NET',        r'\bNet\b'),
+    ('UNIT_PREFIX', r'[munkMG]'),
+    ('UNIT_BASE',   r'(Ohm|F|H|V|A|Hz|S|W|C|T|N|lx|Bq|Gy|Sv|kat)'),
+    ('NUMBER', r'\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?'),
     ('IDENTIFIER', r'[A-Za-z_][A-Za-z0-9_]*'),
     ('OPERATOR',   r'[+\-*/=]'),
-    ('SYMBOL',     r'[(),;{}\.\}]'),
+    ('SYMBOL', r'[(),;{}\.]'),
     ('SKIP',       r'[ \t\r\n]+'),
+    ('COMMENT_SINGLE',  r'//[^\n]*'), 
+    ('COMMENT_BLOCK',   r'/\*[\s\S]*?\*/'),
     ('MISMATCH',   r'.'),
 ]
 _master_regex = '|'.join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPECIFICATION)
@@ -70,9 +77,12 @@ class Lexer:
                 col = start - segment.rfind('\n')
             else:
                 col += len(segment)
-            if kind == 'SKIP':
+              
+            if kind in ('SKIP', 'COMMENT_SINGLE', 'COMMENT_BLOCK'):
                 pos = mo.end()
                 continue
+
+             
             if kind == 'MISMATCH':
                 raise SyntaxError(f"Unexpected token {value!r} at line {line}, column {col}")
             token_type = TokenType[kind]

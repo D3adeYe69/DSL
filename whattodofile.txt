@@ -1,5 +1,0 @@
-use docker so my teamates can run the project without going through hell 
-
-i will for now enhance the Dsl part ..after that i will work on the website stuff 
-
- now im planning on what to improve the dsl part (  it will take around 10 hr or maybe like 14 to add what i think that can help for our project)
