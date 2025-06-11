@@ -16,7 +16,6 @@ class TokenType(Enum):
     WIRE          = auto()
     GROUND        = auto()
     NODE          = auto()
-   
     NET           = auto()  
     UNIT_PREFIX   = auto()  
     UNIT_BASE     = auto()
