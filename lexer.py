@@ -1,49 +1,51 @@
 import re
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 class TokenType(Enum):
-    IDENTIFIER    = auto()
-    NUMBER        = auto()
-    COMPONENT     = auto()
-    CONNECT       = auto()
-    SUBCIRCUIT    = auto()
-    SIMULATE      = auto()
-    SYMBOL        = auto()
-    OPERATOR      = auto()
-    LAW           = auto()
-    WIRE          = auto()
-    GROUND        = auto()
-    NODE          = auto()
-    NET           = auto()  
-    UNIT_PREFIX   = auto()  
-    UNIT_BASE     = auto()
-    KEYWORD       = auto()
-    EOF           = auto()
+    IDENTIFIER       = auto()
+    NUMBER           = auto()
+    COMPONENT        = auto()
+    CONNECT          = auto()
+    SUBCIRCUIT       = auto()
+    SIMULATE         = auto()
+    SYMBOL           = auto()
+    OPERATOR         = auto()
+    LAW              = auto()
+    WIRE             = auto()
+    GROUND           = auto()
+    NODE             = auto()
+    NET              = auto()
+    UNIT_PREFIX      = auto()
+    UNIT_BASE        = auto()
+    KEYWORD          = auto()
+    COMMENT_SINGLE   = auto()
+    COMMENT_BLOCK    = auto()
+    EOF              = auto()
 
 # Token regex specification
 TOKEN_SPECIFICATION = [
-    ('COMPONENT',  r'\b(?:Resistor|Capacitor|Inductor|VoltageSource|CurrentSource|Ammeter)\b'),
-    ('WIRE',       r'\bWire\b'),
-    ('CONNECT',    r'\bConnect\b'),
-    ('SUBCIRCUIT', r'\bSubcircuit\b'),
-    ('SIMULATE',   r'\bSimulate\b'),
-    ('LAW',        r'\b(?:OhmLaw|KCL|KVL)\b'),
-    ('GROUND',     r'\bground\b'),
-    ('NODE',       r'\bnode\b'),
-    ('KEYWORD',    r'\b(?:dc|transient|ac)\b'),
-    ('NET',        r'\bNet\b'),
-    ('UNIT_PREFIX', r'[munkMG]'),
-    ('UNIT_BASE',   r'(Ohm|F|H|V|A|Hz|S|W|C|T|N|lx|Bq|Gy|Sv|kat)'),
-    ('NUMBER', r'\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?'),
-    ('IDENTIFIER', r'[A-Za-z_][A-Za-z0-9_]*'),
-    ('OPERATOR',   r'[+\-*/=]'),
-    ('SYMBOL', r'[(),;{}\.]'),
-    ('SKIP',       r'[ \t\r\n]+'),
-    ('COMMENT_SINGLE',  r'//[^\n]*'), 
-    ('COMMENT_BLOCK',   r'/\*[\s\S]*?\*/'),
-    ('MISMATCH',   r'.'),
+    # Language keywords and component types
+    ('COMPONENT',      r'\b(?:Resistor|Capacitor|Inductor|VoltageSource|CurrentSource|Ammeter)\b'),
+    ('WIRE',           r'\bWire\b'),
+    ('CONNECT',        r'\bConnect\b'),
+    ('SUBCIRCUIT',     r'\bSubcircuit\b'),
+    ('SIMULATE',       r'\bSimulate\b'),
+    ('LAW',            r'\b(?:OhmLaw|KCL|KVL)\b'),
+    ('GROUND',         r'\bground\b'),
+    ('NODE',           r'\bnode\b'),
+    ('KEYWORD',        r'\b(?:dc|transient|ac)\b'),
+    ('NET',            r'\bNet\b'),
+    ('UNIT', r'\b[munkMGT]? (?:Ohm|F|H|V|A|Hz|S|W|C|T|N|lx|Bq|Gy|Sv|kat)\b')
+    ('NUMBER',         r'\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?'),
+    ('IDENTIFIER',     r'[A-Za-z_][A-Za-z0-9_]*'),
+    ('OPERATOR',       r'[+\-*/=]'),
+    ('SYMBOL',         r'[(),;{}\.]'),
+    ('COMMENT_SINGLE', r'//[^\n]*'),
+    ('COMMENT_BLOCK',  r'/\*[\s\S]*?\*/'),
+    ('SKIP',           r'[ \t\r\n]+'),
+    ('MISMATCH',       r'.'),
 ]
 _master_regex = '|'.join(f"(?P<{name}>{pattern})" for name, pattern in TOKEN_SPECIFICATION)
 _token_re = re.compile(_master_regex)
@@ -69,24 +71,26 @@ class Lexer:
             value = mo.group()
             start = mo.start()
             segment = self.code[pos:start]
-            # update line/col based on skipped text
+            # update line/column based on skipped text
             newlines = segment.count('\n')
             if newlines > 0:
                 line += newlines
                 col = start - segment.rfind('\n')
             else:
                 col += len(segment)
-              
+
+            # Skip whitespace and comments
             if kind in ('SKIP', 'COMMENT_SINGLE', 'COMMENT_BLOCK'):
                 pos = mo.end()
                 continue
 
-             
             if kind == 'MISMATCH':
                 raise SyntaxError(f"Unexpected token {value!r} at line {line}, column {col}")
+
             token_type = TokenType[kind]
             tokens.append(Token(token_type, value, line, col))
             pos = mo.end()
             col += len(value)
+
         tokens.append(Token(TokenType.EOF, '', line, col))
         return tokens

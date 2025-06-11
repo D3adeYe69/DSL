@@ -1,6 +1,19 @@
 from typing import List
 from lexer import Token, TokenType
-from ast_nodes import ComponentDeclaration, ComponentTerminal, Connection, SimulationCommand, SimulationBlock, Subcircuit, Program
+from ast_nodes import (
+    ComponentDeclaration,
+    ComponentTerminal,
+    Connection,
+    ASTNetDecl,
+    SubcircuitDecl,
+    SubcircuitInstance,
+    DCCommand,
+    ACCommand,
+    TransientCommand,
+    ParamSweepCommand,
+    SimulationBlock,
+    Program,
+)
 
 class Parser:
     def __init__(self, tokens: List[Token]):
@@ -14,7 +27,6 @@ class Parser:
         if self.index < len(self.tokens):
             self.current = self.tokens[self.index]
         else:
-            # EOF sentinel (line/col not really used for EOF)
             self.current = Token(TokenType.EOF, '', -1, -1)
 
     def consume(self, ttype: TokenType, value: str = None) -> Token:
@@ -24,71 +36,126 @@ class Parser:
             return tok
         raise SyntaxError(
             f"Expected {ttype.name}{' '+value if value else ''}, got {self.current.value!r} "
-            f"at line {self.current.line}, column {self.current.column}"
+            f"at line {self.current.line}, column {self.current.column}" 
         )
 
     def parse(self) -> Program:
-        components, connections, simulations, subcircuits = [], [], [], []
+        components: List[ComponentDeclaration]       = []
+        connections: List[Connection]                = []
+        simulations: List[SimulationBlock]           = []
+        subckt_defs: List[SubcircuitDecl]            = []
+        subckt_insts: List[SubcircuitInstance]       = []
+        nets: List[ASTNetDecl]                       = []
+
         while self.current.type != TokenType.EOF:
-            if self.current.type == TokenType.COMPONENT:
+            if self.current.type == TokenType.NET:
+                nets.append(self.parse_net_decl())
+
+            elif self.current.type == TokenType.COMPONENT:
                 components.append(self.parse_component())
+
             elif self.current.type == TokenType.CONNECT:
                 connections.append(self.parse_connection())
+
             elif self.current.type == TokenType.SIMULATE:
                 simulations.append(self.parse_simulation())
+
             elif self.current.type == TokenType.SUBCIRCUIT:
-                subcircuits.append(self.parse_subcircuit())
+                subckt_defs.append(self.parse_subcircuit())
+
             elif self.current.type == TokenType.IDENTIFIER:
-                # Parse subcircuit instantiation: SubcktName InstanceName;
-                components.append(self.parse_subcircuit_instance())
+                subckt_insts.append(self.parse_subcircuit_inst())
+
             else:
                 raise SyntaxError(
                     f"Unexpected token {self.current.value!r} "
                     f"at line {self.current.line}, column {self.current.column}"
                 )
-        return Program(components, connections, simulations, subcircuits)
+
+        return Program(
+            components,
+            connections,
+            simulations,
+            subckt_defs,
+            subckt_insts,
+            nets,
+        )
+
+    def parse_net_decl(self) -> ASTNetDecl:
+        self.consume(TokenType.NET)
+        name = self.consume(TokenType.IDENTIFIER).value
+        self.consume(TokenType.SYMBOL, ';')
+        return ASTNetDecl(name)
 
     def parse_component(self) -> ComponentDeclaration:
         ctype = self.consume(TokenType.COMPONENT).value
         name  = self.consume(TokenType.IDENTIFIER).value
         self.consume(TokenType.SYMBOL, '(')
-        value = float(self.consume(TokenType.NUMBER).value)
-        unit  = self.consume(TokenType.UNIT).value
+
+        params = []
+        while True:
+            if self.current.type == TokenType.NUMBER:
+                num = float(self.consume(TokenType.NUMBER).value)
+                unit = None
+                if self.current.type == TokenType.UNIT:
+                    unit = self.consume(TokenType.UNIT).value
+                params.append((None, (num, unit)))
+
+            elif self.current.type == TokenType.IDENTIFIER:
+                key = self.consume(TokenType.IDENTIFIER).value
+                self.consume(TokenType.OPERATOR, '=')
+                if self.current.type == TokenType.NUMBER:
+                    num = float(self.consume(TokenType.NUMBER).value)
+                    unit = None
+                    if self.current.type == TokenType.UNIT:
+                        unit = self.consume(TokenType.UNIT).value
+                    params.append((key, (num, unit)))
+                else:
+                    val = self.consume(TokenType.IDENTIFIER).value
+                    params.append((key, val))
+
+            else:
+                break
+
+            if self.current.value == ',':
+                self.consume(TokenType.SYMBOL, ',')
+            else:
+                break
+
         self.consume(TokenType.SYMBOL, ')')
         self.consume(TokenType.SYMBOL, ';')
-        return ComponentDeclaration(ctype, name, value, unit)
+        return ComponentDeclaration(ctype, name, params)
 
     def parse_connection(self) -> Connection:
         self.consume(TokenType.CONNECT)
         self.consume(TokenType.SYMBOL, '(')
         endpoints = []
+
         while True:
-            if self.current.type == TokenType.IDENTIFIER:
-                # Look ahead: if next is dot, parse as terminal, else as node name
-                lookahead = self.tokens[self.index + 1]
-                if lookahead.value == '.':
-                    # Parse hierarchical terminal
+            if self.current.type == TokenType.GROUND:
+                endpoints.append("ground")
+                self.advance()
+
+            elif self.current.type == TokenType.IDENTIFIER:
+                look = self.tokens[self.index + 1]
+                if look.value == '.':
                     parts = [self.consume(TokenType.IDENTIFIER).value]
                     while self.current.value == '.':
                         self.consume(TokenType.SYMBOL, '.')
                         parts.append(self.consume(TokenType.IDENTIFIER).value)
-                    if len(parts) < 2:
-                        raise SyntaxError("Expected at least one dot in terminal reference")
                     comp = '.'.join(parts[:-1])
                     term = parts[-1]
                     endpoints.append(ComponentTerminal(comp, term))
                 else:
-                    # It's a node name
                     endpoints.append(self.consume(TokenType.IDENTIFIER).value)
             else:
-                # literal node name or 'ground'
-                endpoints.append(self.current.value)
-                self.advance()
-            # comma-separated?
+                raise SyntaxError(f"Unexpected endpoint {self.current.value!r}")
+
             if self.current.value == ',':
                 self.consume(TokenType.SYMBOL, ',')
-                continue
-            break
+            else:
+                break
+
         self.consume(TokenType.SYMBOL, ')')
         self.consume(TokenType.SYMBOL, ';')
         return Connection(endpoints)
@@ -96,34 +163,72 @@ class Parser:
     def parse_simulation(self) -> SimulationBlock:
         self.consume(TokenType.SIMULATE)
         self.consume(TokenType.SYMBOL, '{')
-        commands: List[SimulationCommand] = []
+        commands = []
+
         while self.current.value != '}':
-            stype = self.consume(TokenType.KEYWORD).value
-            params = []
-            if self.current.value == '(':
+            kw = self.consume(TokenType.KEYWORD).value
+
+            if kw == 'dc':
+                self.consume(TokenType.SYMBOL, ';')
+                commands.append(DCCommand())
+
+            elif kw == 'ac':
                 self.consume(TokenType.SYMBOL, '(')
-                while True:
-                    if self.current.type == TokenType.NUMBER:
-                        params.append(float(self.consume(TokenType.NUMBER).value))
-                    else:
-                        params.append(self.consume(TokenType.KEYWORD).value)
-                    if self.current.value == ',':
-                        self.consume(TokenType.SYMBOL, ',')
-                        continue
-                    break
+                f0 = float(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ',')
+                f1 = float(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ',')
+                pts = int(self.consume(TokenType.NUMBER).value)
                 self.consume(TokenType.SYMBOL, ')')
-            self.consume(TokenType.SYMBOL, ';')
-            commands.append(SimulationCommand(stype, params))
-        # closing brace
+                self.consume(TokenType.SYMBOL, ';')
+                commands.append(ACCommand(f0, f1, pts))
+
+            elif kw == 'transient':
+                self.consume(TokenType.SYMBOL, '(')
+                t_stop = float(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ',')
+                dt     = float(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ')')
+                self.consume(TokenType.SYMBOL, ';')
+                commands.append(TransientCommand(t_stop, dt))
+
+            elif kw == 'paramSweep':
+                self.consume(TokenType.SYMBOL, '(')
+                pname = self.consume(TokenType.IDENTIFIER).value
+                self.consume(TokenType.SYMBOL, ',')
+                s0    = float(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ',')
+                s1    = float(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ',')
+                n     = int(self.consume(TokenType.NUMBER).value)
+                self.consume(TokenType.SYMBOL, ')')
+                self.consume(TokenType.SYMBOL, ';')
+                commands.append(ParamSweepCommand(pname, s0, s1, n))
+
+            else:
+                raise SyntaxError(f"Unknown simulation keyword {kw!r}")
+
         self.consume(TokenType.SYMBOL, '}')
-        # consume optional semicolon after the block
-        if self.current.type == TokenType.SYMBOL and self.current.value == ';':
+        if self.current.value == ';':
             self.consume(TokenType.SYMBOL, ';')
         return SimulationBlock(commands)
 
-    def parse_subcircuit(self) -> Subcircuit:
+    def parse_subcircuit(self) -> SubcircuitDecl:
         self.consume(TokenType.SUBCIRCUIT)
         name = self.consume(TokenType.IDENTIFIER).value
+
+        # optional parameter list
+        param_names: List[str] = []
+        if self.current.value == '(':
+            self.consume(TokenType.SYMBOL, '(')
+            while True:
+                param_names.append(self.consume(TokenType.IDENTIFIER).value)
+                if self.current.value == ',':
+                    self.consume(TokenType.SYMBOL, ',')
+                    continue
+                break
+            self.consume(TokenType.SYMBOL, ')')
+
         self.consume(TokenType.SYMBOL, '{')
         comps, conns, sims = [], [], []
         while self.current.value != '}':
@@ -140,11 +245,32 @@ class Parser:
                 )
         self.consume(TokenType.SYMBOL, '}')
         self.consume(TokenType.SYMBOL, ';')
-        return Subcircuit(name, comps, conns, sims)
+        return SubcircuitDecl(name, param_names, comps, conns, sims)
 
-    def parse_subcircuit_instance(self) -> ComponentDeclaration:
-        subckt_type = self.consume(TokenType.IDENTIFIER).value
-        name = self.consume(TokenType.IDENTIFIER).value
+    def parse_subcircuit_inst(self) -> SubcircuitInstance:
+        type_name     = self.consume(TokenType.IDENTIFIER).value
+        instance_name = self.consume(TokenType.IDENTIFIER).value
+
+        params = []
+        if self.current.value == '(':
+            self.consume(TokenType.SYMBOL, '(')
+            while True:
+                if self.current.type == TokenType.NUMBER:
+                    num = float(self.consume(TokenType.NUMBER).value)
+                    unit = None
+                    if self.current.type == TokenType.UNIT:
+                        unit = self.consume(TokenType.UNIT).value
+                    params.append((None, (num, unit)))
+                elif self.current.type == TokenType.IDENTIFIER:
+                    params.append(self.consume(TokenType.IDENTIFIER).value)
+                else:
+                    break
+
+                if self.current.value == ',':
+                    self.consume(TokenType.SYMBOL, ',')
+                    continue
+                break
+            self.consume(TokenType.SYMBOL, ')')
+
         self.consume(TokenType.SYMBOL, ';')
-        # Use a special type or flag to indicate this is a subcircuit instance
-        return ComponentDeclaration(subckt_type, name, 0, '')
+        return SubcircuitInstance(type_name, instance_name, params)
