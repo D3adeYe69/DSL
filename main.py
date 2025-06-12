@@ -3,12 +3,21 @@ import argparse
 import sys
 import matplotlib.pyplot as plt
 from pathlib import Path
+import logging
 
 from lexer import Lexer
 from parser import Parser
 from interpreter import Interpreter
 from semantic import SemanticAnalyzer, SemanticError
 from ast_nodes import ComponentTerminal
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # Layout parameters
 NET_SPACING = 2.0     # vertical spacing between rails
@@ -120,7 +129,7 @@ def draw_circuit(program, output_path):
         plt.tight_layout()
         plt.savefig(output_path, bbox_inches='tight')
         plt.close(fig)
-        print(f"Diagram saved to {output_path} (rectangular loop)")
+        logger.info(f"Diagram saved to {output_path} (rectangular loop)")
         return
     # Orthogonal grid layout
     fig, ax = plt.subplots(figsize=(COMP_SPACING * 5, NET_SPACING * (len(nets)+1)))
@@ -146,7 +155,7 @@ def draw_circuit(program, output_path):
     # Save with high DPI for better quality
     plt.savefig(output_path, bbox_inches='tight', dpi=300)
     plt.close(fig)
-    print(f"Diagram saved to {output_path} (orthogonal grid)")
+    logger.info(f"Diagram saved to {output_path} (orthogonal grid)")
 
 
 def process_circuit(source: str, output_path: str) -> bool:
@@ -171,7 +180,7 @@ def process_circuit(source: str, output_path: str) -> bool:
         return True
         
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}")
         return False
 
 
@@ -184,14 +193,14 @@ def main():
     # Validate input file
     input_path = Path(args.input_file)
     if not input_path.exists():
-        print(f"Error: Input file '{args.input_file}' does not exist", file=sys.stderr)
+        logger.error(f"Input file '{args.input_file}' does not exist")
         sys.exit(1)
     
     # Read source
     try:
         source = input_path.read_text(encoding='utf-8')
     except Exception as e:
-        print(f"Error reading input file: {e}", file=sys.stderr)
+        logger.error(f"Error reading input file: {e}")
         sys.exit(1)
     
     # Process circuit

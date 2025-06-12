@@ -231,30 +231,3 @@ class UnitParser:
         
         # Unknown unit
         return 1.0, unit_str
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test the lexer with sample code
-    sample_code = """
-    // Sample circuit description
-    Resistor R1(1.2kOhm, node1, node2);
-    Capacitor C1(10uF, node2, ground);
-    
-    Connect(node1, VCC);
-    
-    Subcircuit amplifier {
-        // Amplifier implementation
-    }
-    
-    Simulate dc {
-        paramSweep VCC 0V 5V 0.1V;
-    }
-    """
-    
-    lexer = Lexer(sample_code, "test.cir")
-    try:
-        tokens = lexer.tokenize()
-        for token in tokens[:20]:  # Show first 20 tokens
-            print(token)
-    except LexerError as e:
-        print(f"Lexer error: {e}")
