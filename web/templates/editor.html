@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Circuit DSL Editor - Create and visualize electronic circuits">
+    <title>Circuit DSL Editor</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap">
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn" id="runBtn">Render Circuit</button>
+        <button class="btn" id="saveBtn">Save</button>
+        <button class="btn" id="loadBtn">Load</button>
+    </div>
+
+    <div class="sidebar components">
+        <input type="text" class="search" placeholder="Search components...">
+        <ul class="list">
+            <li>Resistor</li>
+            <li>Voltage Source</li>
+            <li>Current Source</li>
+            <li>Capacitor</li>
+            <li>Inductor</li>
+            <li>Ammeter</li>
+        </ul>
+    </div>
+
+    <div id="canvas">
+        <textarea id="code-editor" spellcheck="false">Resistor R1(100 ohm);
+VoltageSource V1(9 V);
+Connect(V1.positive, R1.positive, V1.negative, R1.negative);</textarea>
+        <div id="circuit-container"></div>
+    </div>
+
+    <div class="sidebar layers">
+        <h3>Circuit Layers</h3>
+        <ul class="list">
+            <li>Components</li>
+            <li>Connections</li>
+            <li>Labels</li>
+        </ul>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="../interactive_visualization.js"></script>
+</body>
+</html>

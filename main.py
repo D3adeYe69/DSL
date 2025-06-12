@@ -2,10 +2,12 @@
 import argparse
 import sys
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from lexer import Lexer
 from parser import Parser
 from interpreter import Interpreter
+from semantic import SemanticAnalyzer, SemanticError
 from ast_nodes import ComponentTerminal
 
 # Layout parameters
@@ -48,6 +50,23 @@ def draw_symbol(ax, comp, x, y):
     elif 'resistor' in t:
         # zigzag resistor horizontally
         n = 6
+        dx = SYMBOL_WIDTH / (n * 2)
+        pts = []
+        for i in range(n * 2 + 1):
+            xi = x - SYMBOL_WIDTH/2 + i * dx
+            yi = y + (SYMBOL_HEIGHT if i % 2 == 0 else -SYMBOL_HEIGHT)
+            pts.append((xi, yi))
+        xs, ys = zip(*pts)
+        ax.plot(xs, ys, 'k-', lw=2)
+    elif 'capacitor' in t:
+        # parallel plates
+        plate_width = SYMBOL_WIDTH * 0.3
+        plate_height = SYMBOL_HEIGHT * 0.4
+        ax.plot([x - plate_width, x + plate_width], [y - plate_height, y - plate_height], 'k-', lw=2)
+        ax.plot([x - plate_width, x + plate_width], [y + plate_height, y + plate_height], 'k-', lw=2)
+    elif 'inductor' in t:
+        # coil symbol
+        n = 4
         dx = SYMBOL_WIDTH / (n * 2)
         pts = []
         for i in range(n * 2 + 1):
@@ -130,20 +149,54 @@ def draw_circuit(program, output_path):
     print(f"Diagram saved to {output_path} (orthogonal grid)")
 
 
+def process_circuit(source: str, output_path: str) -> bool:
+    """
+    Process a circuit definition and generate its visualization.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        # Lexical analysis
+        tokens = Lexer(source).tokenize()
+        
+        # Parsing
+        program = Parser(tokens).parse()
+        
+        # Semantic analysis
+        analyzer = SemanticAnalyzer(program)
+        analyzer.analyze()
+        
+        # Interpretation and visualization
+        Interpreter(program).run()
+        draw_circuit(program, output_path)
+        return True
+        
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return False
+
+
 def main():
-    parser = argparse.ArgumentParser(description="DSL→SPICE + schematic viz")
+    parser = argparse.ArgumentParser(description="Circuit DSL Compiler and Visualizer")
     parser.add_argument("input_file", help="DSL source file")
     parser.add_argument("output_file", help="Diagram output file")
     args = parser.parse_args()
-    try:
-        src = open(args.input_file, encoding='utf-8').read()
-        tokens = Lexer(src).tokenize()
-        program = Parser(tokens).parse()
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    
+    # Validate input file
+    input_path = Path(args.input_file)
+    if not input_path.exists():
+        print(f"Error: Input file '{args.input_file}' does not exist", file=sys.stderr)
         sys.exit(1)
-    Interpreter(program).run()
-    draw_circuit(program, args.output_file)
+    
+    # Read source
+    try:
+        source = input_path.read_text(encoding='utf-8')
+    except Exception as e:
+        print(f"Error reading input file: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Process circuit
+    if not process_circuit(source, args.output_file):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive Circuit Visualization - View and analyze electronic circuits">
+    <title>Interactive Circuit Visualization</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn" id="render-btn">Render</button>
+        <button class="btn" id="code-btn">Show Code</button>
+        <button class="btn" id="add-component">Add Component</button>
+        <button class="btn" id="add-connection">Add Connection</button>
+        <button class="btn" id="remove-mode">Remove</button>
+    </div>
+
+    <div id="canvas">
+        <textarea id="code-editor" spellcheck="false">VoltageSource V2(5 V);
+Resistor R2(100 ohm);
+Ammeter A1(10 A);
+Connect(V2.positive, A1.positive, node1);
+Connect(A1.negative, R2.positive, node2);
+Connect(V2.negative, R2.negative, ground);
+Simulate { dc; };</textarea>
+        <div id="circuit-container"></div>
+    </div>
+
+    <div id="component-details" class="component-details"></div>
+
+    <script src="../interactive_visualization.js"></script>
+</body>
+</html> 

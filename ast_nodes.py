@@ -283,10 +283,10 @@ class DCAnalysis(SimulationNode):
 class ACAnalysis(SimulationNode):
     """AC small-signal analysis"""
     analysis_type: str  # "lin", "dec", "oct"
-    points_per_decade: Optional[int] = None  # for dec/oct
-    total_points: Optional[int] = None       # for lin
     start_frequency: ExpressionNode
     stop_frequency: ExpressionNode
+    points_per_decade: Optional[int] = None  # for dec/oct
+    total_points: Optional[int] = None       # for lin
     options: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
@@ -308,13 +308,13 @@ class TransientAnalysis(SimulationNode):
 class NoiseAnalysis(SimulationNode):
     """Noise analysis"""
     output_node: str
-    reference_node: Optional[str] = None
     input_source: str
     analysis_type: str  # "lin", "dec", "oct"
-    points_per_decade: Optional[int] = None
-    total_points: Optional[int] = None
     start_frequency: ExpressionNode
     stop_frequency: ExpressionNode
+    reference_node: Optional[str] = None
+    points_per_decade: Optional[int] = None
+    total_points: Optional[int] = None
     options: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):

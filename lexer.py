@@ -48,9 +48,8 @@ TOKEN_SPECIFICATION = [
     # Numbers with scientific notation and units
     ('NUMBER', r'\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?(?:[munpfakMGTPE])?(?:[A-Za-z]+)?'),
     
-    # String literals
-    ('STRING', r'"(?:[^"\\]|\\.)*"'),
-    ('STRING', r"'(?:[^'\\]|\\.)*'"),
+    # String literals (both single and double quotes)
+    ('STRING', r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\''),
     
     # Identifiers (after keywords to avoid conflicts)
     ('IDENTIFIER', r'[A-Za-z_][A-Za-z0-9_]*'),
