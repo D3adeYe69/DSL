@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from flask import Flask, render_template, jsonify, request
 import json
 import math
@@ -9,7 +15,6 @@ from ast_nodes import (
     Terminal, Node, Subcircuit, VisualizationVisitor, ValidationVisitor,
     SimulationNode, AnalysisBlock, VariableDeclaration
 )
-import os
 
 app = Flask(__name__)
 
@@ -128,7 +133,7 @@ class EnhancedVisualizationVisitor(VisualizationVisitor):
         if not expr:
             return None
         
-        from ast_nodes import Literal, Identifier
+        from ..ast_nodes import Literal, Identifier
         
         if isinstance(expr, Literal):
             if isinstance(expr.value, (int, float)):

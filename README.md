@@ -110,5 +110,11 @@ Simulate {
 
 Write this code in the web interface and click "Visualize" to see the circuit diagram.
 
+.node-text {
+  font-size: 14px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
 
 

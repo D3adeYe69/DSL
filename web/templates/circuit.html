@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuit Visualization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn">Home</button>
+        <button class="btn">About</button>
+    </div>
+    <div class="sidebar components">
+        <input type="text" class="search" placeholder="Search components...">
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="passive">Passive</button>
+            <button class="tab-btn" data-tab="active">Active</button>
+            <button class="tab-btn" data-tab="sources">Sources</button>
+        </div>
+        <div class="tab-content" id="passive">
+            <ul class="list">
+                <li>Resistor</li>
+                <li>Capacitor</li>
+                <li>Inductor</li>
+            </ul>
+        </div>
+        <div class="tab-content" id="active" style="display:none;">
+            <ul class="list">
+                <li>Transistor</li>
+                <li>Diode</li>
+                <li>Op-Amp</li>
+            </ul>
+        </div>
+        <div class="tab-content" id="sources" style="display:none;">
+            <ul class="list">
+                <li>Voltage Source</li>
+                <li>Current Source</li>
+            </ul>
+        </div>
+    </div>
+    <div id="canvas"></div>
+    <div class="code-editor">
+        <textarea id="code-editor" placeholder="Write your circuit code here..."></textarea>
+        <button class="btn">Run Code</button>
+    </div>
+    <script src="{{ url_for('static', filename='interactive_visualization.js') }}"></script>
+</body>
+</html> 

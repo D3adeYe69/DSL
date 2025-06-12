@@ -141,7 +141,18 @@ html, body {
 .node-text {
   font-size: 14px;
   text-anchor: middle;
-  dominant-baseline: middle;
+}
+
+/* Terminal Styles */
+.terminal {
+  fill: #fff;
+  stroke: var(--text-color);
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.terminal:hover {
+  fill: var(--hover-color);
 }
 
 /* Code Editor */
