@@ -52,20 +52,16 @@ class Parser:
             return self.tokens[peek_index]
         return Token(TokenType.EOF, '', -1, -1)
 
-    def consume(self, ttype: TokenType, value: str = None) -> Token:
-        if self.current.type == ttype and (value is None or self.current.value == value):
-            tok = self.current
+    def consume(self, token_type: TokenType, message: str = None) -> Token:
+        """Consume a token of the expected type"""
+        if self.current.type == token_type:
+            token = self.current
             self.advance()
-            return tok
+            return token
         
-        expected = f"{ttype.name}"
-        if value:
-            expected += f" '{value}'"
-        
-        raise ParserError(
-            f"Expected {expected}, got {self.current.type.name} '{self.current.value}'",
-            self.current
-        )
+        if message is None:
+            message = f"Expected {token_type.name}, got {self.current.type.name}"
+        raise ParserError(message, self.current)
 
     def create_node(self, node_class, **kwargs):
         """Helper to create AST nodes with source location"""
@@ -311,7 +307,8 @@ class Parser:
         
         # Parse parameters
         self.consume(TokenType.SYMBOL, "Expected '(' after component name")  # Consume '('
-        parameters = {}
+        positional_params = []
+        named_params = {}
         
         # Handle empty parameter list
         if self.match(TokenType.SYMBOL) and self.current.value == ')':
@@ -320,7 +317,8 @@ class Parser:
                 ComponentDeclaration,
                 type_name=component_type,
                 instance_name=component_name,
-                parameters=parameters
+                positional_params=positional_params,
+                named_params=named_params
             )
         
         # Parse parameters
@@ -329,20 +327,12 @@ class Parser:
             if self.match(TokenType.IDENTIFIER) and self.peek().type == TokenType.OPERATOR and self.peek().value == '=':
                 key = self.consume(TokenType.IDENTIFIER).value
                 self.consume(TokenType.OPERATOR, "Expected '=' in named parameter")  # Consume '='
-                parameters[key] = self.parse_expression()
+                named_params[key] = self.parse_expression()
             else:
-                # Handle positional parameters by creating default names
-                param_count = len(parameters)
-                if component_type == 'Resistor':
-                    param_name = 'resistance' if param_count == 0 else f'param_{param_count}'
-                elif component_type == 'VoltageSource':
-                    param_name = 'voltage' if param_count == 0 else f'param_{param_count}'
-                elif component_type == 'Capacitor':
-                    param_name = 'capacitance' if param_count == 0 else f'param_{param_count}'
-                else:
-                    param_name = f'param_{param_count}'
-                
-                parameters[param_name] = self.parse_expression()
+                # Handle positional parameters
+                if named_params:
+                    raise ParserError("Positional parameters cannot follow named parameters", self.current)
+                positional_params.append(self.parse_expression())
             
             # Check for end of parameter list
             if self.match(TokenType.SYMBOL) and self.current.value == ')':
@@ -358,7 +348,8 @@ class Parser:
             ComponentDeclaration,
             type_name=component_type,
             instance_name=component_name,
-            parameters=parameters
+            positional_params=positional_params,
+            named_params=named_params
         )
 
     def parse_connection(self) -> Connection:

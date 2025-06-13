@@ -4,41 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Circuit DSL Visualizer</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='../styles/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/material-darker.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/konva/8.3.13/konva.min.js"></script>
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <h2>Components</h2>
-                <input type="text" class="search-input" placeholder="Search components...">
-            </div>
-            <div class="component-tabs">
-                <button class="tab-btn active" data-tab="passive">Passive</button>
-                <button class="tab-btn" data-tab="active">Active</button>
-                <button class="tab-btn" data-tab="sources">Sources</button>
-            </div>
-            <div class="component-list">
-                <div class="tab-content active" id="passive">
-                    <div class="component-item" draggable="true" data-type="Resistor">Resistor</div>
-                    <div class="component-item" draggable="true" data-type="Capacitor">Capacitor</div>
-                    <div class="component-item" draggable="true" data-type="Inductor">Inductor</div>
-                </div>
-                <div class="tab-content" id="active">
-                    <div class="component-item" draggable="true" data-type="Transistor">Transistor</div>
-                    <div class="component-item" draggable="true" data-type="Diode">Diode</div>
-                    <div class="component-item" draggable="true" data-type="OpAmp">Op-Amp</div>
-                </div>
-                <div class="tab-content" id="sources">
-                    <div class="component-item" draggable="true" data-type="VoltageSource">Voltage Source</div>
-                    <div class="component-item" draggable="true" data-type="CurrentSource">Current Source</div>
-                </div>
-            </div>
-        </div>
-
         <!-- Main Content -->
         <div class="main-content">
             <!-- Toolbar -->
@@ -54,7 +28,6 @@
                     <button class="tool-btn" id="reset-view">Reset View</button>
                 </div>
             </div>
-
             <!-- Split View -->
             <div class="split-view">
                 <!-- Code Editor -->
@@ -67,8 +40,8 @@
                         </div>
                     </div>
                     <textarea id="code-editor"></textarea>
+                    <div id="terminal" class="terminal"></div>
                 </div>
-
                 <!-- Canvas -->
                 <div class="canvas-container">
                     <div class="canvas-header">
@@ -78,25 +51,19 @@
                             <button class="canvas-btn" id="toggle-labels">Labels</button>
                         </div>
                     </div>
-                    <div id="circuit-canvas"></div>
+                    <div id="circuit-canvas" class="circuit-canvas"></div>
+                </div>
+            </div>
+            <!-- Status Bar -->
+            <div class="status-bar">
+                <div class="status-message">Ready</div>
+                <div class="status-actions">
+                    <button class="status-btn" id="show-errors">Errors</button>
+                    <button class="status-btn" id="show-warnings">Warnings</button>
                 </div>
             </div>
         </div>
-
-        <!-- Status Bar -->
-        <div class="status-bar">
-            <div class="status-message">Ready</div>
-            <div class="status-actions">
-                <button class="status-btn" id="show-errors">Errors</button>
-                <button class="status-btn" id="show-warnings">Warnings</button>
-            </div>
-        </div>
     </div>
-
-    <!-- Scripts -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/konva/8.3.2/konva.min.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html> 

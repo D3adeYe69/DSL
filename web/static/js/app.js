@@ -1,17 +1,17 @@
 // Initialize CodeMirror
-const editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
-    mode: 'javascript',
-    theme: 'monokai',
-    lineNumbers: true,
-    autoCloseBrackets: true,
-    matchBrackets: true,
-    indentUnit: 4,
-    tabSize: 4,
-    lineWrapping: true,
-    extraKeys: {
-        'Ctrl-Space': 'autocomplete'
-    }
-});
+let editor;
+if (window.CodeMirror) {
+    editor = CodeMirror.fromTextArea(document.getElementById('code-editor'), {
+        mode: 'python', // or your DSL mode
+        theme: 'material-darker',
+        lineNumbers: true,
+        autofocus: true,
+    });
+} else {
+    editor = {
+        getValue: () => document.getElementById('code-editor').value
+    };
+}
 
 // Circuit Constants
 const CIRCUIT_CONFIG = {
@@ -292,24 +292,29 @@ function showComponentDetails(component) {
 }
 
 // Toolbar Actions
-document.getElementById('run-code').addEventListener('click', () => {
-    const code = editor.getValue();
-    fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            // Update circuit visualization
-            renderCircuit(data.result);
-        } else {
-            showError(data.message);
-        }
-    })
-    .catch(error => showError(error.message));
-});
+const runBtn = document.getElementById('run-code');
+if (runBtn) {
+    runBtn.addEventListener('click', function() {
+        const code = editor.getValue();
+        fetch('/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dsl: code })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderCircuit(data.data);
+                showError('');
+            } else {
+                showError(data.error || 'Unknown error');
+            }
+        })
+        .catch(err => {
+            showError('Network or server error: ' + err);
+        });
+    });
+}
 
 document.getElementById('clear-canvas').addEventListener('click', () => {
     layer.destroyChildren();
@@ -369,17 +374,22 @@ document.getElementById('reset-view').addEventListener('click', () => {
     stage.draw();
 });
 
-// Error Handling
-function showError(message) {
-    const statusBar = document.querySelector('.status-message');
-    if (statusBar) {
-        statusBar.textContent = `Error: ${message}`;
-        statusBar.style.color = '#ff4444';
-        setTimeout(() => {
-            statusBar.textContent = 'Ready';
-            statusBar.style.color = '#ecf0f1';
-        }, 3000);
+// Show error in terminal
+function showError(msg) {
+    const terminal = document.getElementById('terminal');
+    if (terminal) {
+        terminal.textContent = msg ? 'Error: ' + msg : '';
+        terminal.style.color = msg ? '#ff5555' : '#e0e0e0';
     }
+}
+
+// Placeholder: Render circuit visualization
+function renderCircuit(data) {
+    const canvas = document.getElementById('circuit-canvas');
+    if (!canvas) return;
+    // For now, just show the JSON as a string
+    canvas.innerHTML = '<pre style="color:#222;font-size:1rem">' + JSON.stringify(data, null, 2) + '</pre>';
+    // TODO: Replace with actual drawing logic using Konva/D3
 }
 
 // Window Resize Handler
