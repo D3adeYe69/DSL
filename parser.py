@@ -83,6 +83,15 @@ class Parser:
         connections: List[Connection] = []
         analyses: List[AnalysisBlock] = []
 
+        # Define known component types
+        COMPONENT_TYPES = {
+            'Resistor', 'Capacitor', 'Inductor',
+            'VoltageSource', 'CurrentSource', 'ACSource', 'DCSource',
+            'Ammeter', 'Voltmeter', 'Ohmmeter',
+            'Diode', 'BJT', 'MOSFET', 'OpAmp',
+            'Ground', 'Node'
+        }
+
         while self.current.type != TokenType.EOF:
             if self.current.type == TokenType.KEYWORD and self.current.value == "import":
                 imports.append(self.parse_import())
@@ -103,15 +112,19 @@ class Parser:
                 subcircuits.append(self.parse_subcircuit())
 
             elif self.current.type == TokenType.IDENTIFIER:
-                # Could be subcircuit instance or variable assignment
+                # Look ahead to determine if this is a component or subcircuit
                 if self.peek().type == TokenType.IDENTIFIER:
-                    # Pattern: TypeName instanceName - subcircuit instance
-                    subcircuit_instances.append(self.parse_subcircuit_instance())
+                    # Check if the first identifier is a known component type
+                    if self.current.value in COMPONENT_TYPES:
+                        components.append(self.parse_component())
+                    else:
+                        # Assume it's a subcircuit instance
+                        subcircuit_instances.append(self.parse_subcircuit_instance())
                 elif self.peek().type == TokenType.OPERATOR and self.peek().value == "=":
                     # Pattern: varName = value - variable assignment
                     variables.append(self.parse_variable_assignment())
                 else:
-                    raise ParserError("Unexpected identifier pattern", self.current)
+                    raise ParserError(f"Unexpected identifier pattern: {self.current.value}", self.current)
 
             else:
                 raise ParserError(f"Unexpected token '{self.current.value}'", self.current)
@@ -300,56 +313,82 @@ class Parser:
         
         raise ParserError(f"Unexpected token in expression: '{self.current.value}'", self.current)
 
-    def parse_component(self) -> ComponentDeclaration:
-        """Parse a component declaration"""
-        component_type = self.consume(TokenType.COMPONENT).value
-        component_name = self.consume(TokenType.IDENTIFIER).value
+    def parse_component_declaration(self) -> ComponentDeclaration:
+        """Parse a component declaration with enhanced parameter handling"""
+        # Get component type
+        if self.current.type not in [
+            TokenType.RESISTOR, TokenType.CAPACITOR, TokenType.INDUCTOR,
+            TokenType.VOLTAGE_SOURCE, TokenType.CURRENT_SOURCE, TokenType.AC_SOURCE,
+            TokenType.AMMETER
+        ]:
+            raise ParserError(f"Expected component type, got {self.current.type}", self.current)
+        
+        type_name = self.current.value
+        self.advance()
+        
+        # Get instance name
+        if self.current.type != TokenType.IDENTIFIER:
+            raise ParserError(f"Expected component name, got {self.current.type}", self.current)
+        instance_name = self.current.value
+        self.advance()
         
         # Parse parameters
-        self.consume(TokenType.SYMBOL, "Expected '(' after component name")  # Consume '('
         positional_params = []
         named_params = {}
         
-        # Handle empty parameter list
-        if self.match(TokenType.SYMBOL) and self.current.value == ')':
-            self.advance()  # Consume ')'
-            return self.create_node(
-                ComponentDeclaration,
-                type_name=component_type,
-                instance_name=component_name,
-                positional_params=positional_params,
-                named_params=named_params
-            )
-        
-        # Parse parameters
-        while True:
-            # Check for named parameter (key=value)
-            if self.match(TokenType.IDENTIFIER) and self.peek().type == TokenType.OPERATOR and self.peek().value == '=':
-                key = self.consume(TokenType.IDENTIFIER).value
-                self.consume(TokenType.OPERATOR, "Expected '=' in named parameter")  # Consume '='
-                named_params[key] = self.parse_expression()
-            else:
-                # Handle positional parameters
-                if named_params:
-                    raise ParserError("Positional parameters cannot follow named parameters", self.current)
-                positional_params.append(self.parse_expression())
+        if self.current.type == TokenType.SYMBOL and self.current.value == '(':
+            self.advance()
             
-            # Check for end of parameter list
-            if self.match(TokenType.SYMBOL) and self.current.value == ')':
-                self.advance()  # Consume ')'
-                break
-            elif self.match(TokenType.SYMBOL) and self.current.value == ',':
-                self.advance()  # Consume ','
-                continue
-            else:
-                raise ParserError("Expected ',' or ')' in component parameters", self.current)
+            # Parse parameters until closing parenthesis
+            while self.current.type != TokenType.SYMBOL or self.current.value != ')':
+                if self.current.type == TokenType.IDENTIFIER:
+                    # Named parameter
+                    param_name = self.current.value
+                    self.advance()
+                    
+                    if self.current.type != TokenType.SYMBOL or self.current.value != '=':
+                        raise ParserError("Expected '=' after parameter name", self.current)
+                    self.advance()
+                    
+                    param_value = self.parse_expression()
+                    named_params[param_name] = param_value
+                else:
+                    # Positional parameter
+                    param_value = self.parse_expression()
+                    positional_params.append(param_value)
+                
+                # Check for comma or closing parenthesis
+                if self.current.type == TokenType.SYMBOL:
+                    if self.current.value == ')':
+                        break
+                    elif self.current.value == ',':
+                        self.advance()
+                    else:
+                        raise ParserError("Expected ',' or ')'", self.current)
+            
+            self.advance()  # Consume closing parenthesis
+        
+        # Add semicolon
+        if self.current.type != TokenType.SYMBOL or self.current.value != ';':
+            raise ParserError("Expected ';' after component declaration", self.current)
+        self.advance()
+        
+        # Create component with proper terminals
+        terminals = None
+        if type_name in ['VoltageSource', 'CurrentSource', 'ACSource']:
+            terminals = ['positive', 'negative']
+        elif type_name in ['Resistor', 'Capacitor', 'Inductor']:
+            terminals = ['positive', 'negative']
+        elif type_name == 'Ammeter':
+            terminals = ['positive', 'negative']
         
         return self.create_node(
             ComponentDeclaration,
-            type_name=component_type,
-            instance_name=component_name,
+            type_name=type_name,
+            instance_name=instance_name,
             positional_params=positional_params,
-            named_params=named_params
+            named_params=named_params,
+            terminals=terminals
         )
 
     def parse_connection(self) -> Connection:
@@ -388,87 +427,66 @@ class Parser:
         return self.create_node(Connection, endpoints=endpoints)
 
     def parse_analysis_block(self) -> AnalysisBlock:
-        """Parse an analysis block containing multiple simulations"""
-        self.consume(TokenType.KEYWORD, "analysis")
+        self.consume(TokenType.SIMULATE)
+        self.consume(TokenType.SYMBOL, '{')
         
-        # Optional analysis block name
-        name = None
-        if self.current.type == TokenType.IDENTIFIER:
-            name = self.consume(TokenType.IDENTIFIER).value
-        
-        self.consume(TokenType.LBRACE)
-        
-        simulations: List[SimulationNode] = []
-        plots: List[Any] = []
-        
-        while self.current.type != TokenType.RBRACE:
-            kw = self.current.value.lower()
-            if kw == "dc":
-                simulations.append(self.parse_dc_analysis())
-            elif kw == "ac":
-                simulations.append(self.parse_ac_analysis())
-            elif kw == "transient":
-                simulations.append(self.parse_transient_analysis())
-            elif kw == "noise":
-                simulations.append(self.parse_noise_analysis())
-            elif kw == "param":
-                simulations.append(self.parse_parametric_analysis())
+        simulations = []
+        plots = []
+        while self.current.type != TokenType.SYMBOL or self.current.value != '}':
+            if self.current.type == TokenType.KEYWORD:
+                analysis_type = self.current.value
+                if analysis_type == 'dc':
+                    simulations.append(self.parse_dc_analysis())
+                elif analysis_type == 'ac':
+                    simulations.append(self.parse_ac_analysis())
+                elif analysis_type == 'transient':
+                    simulations.append(self.parse_transient_analysis())
+                elif analysis_type == 'noise':
+                    simulations.append(self.parse_noise_analysis())
+                elif analysis_type == 'paramSweep':
+                    simulations.append(self.parse_parametric_analysis())
+                else:
+                    raise ParserError(f"Unknown analysis type: {analysis_type}", self.current)
             else:
-                raise ParserError(f"Unknown analysis keyword: '{kw}'", self.current)
+                raise ParserError("Expected analysis type keyword", self.current)
+            
+            # Check for semicolon after each analysis
+            if self.current.type == TokenType.SYMBOL and self.current.value == ';':
+                self.consume(TokenType.SYMBOL, ';')
         
-        self.consume(TokenType.RBRACE)
-        return self.create_node(AnalysisBlock, name=name, simulations=simulations, plots=plots)
+        self.consume(TokenType.SYMBOL, '}')
+        self.consume(TokenType.SYMBOL, ';')
+        
+        return self.create_node(AnalysisBlock, name="main", simulations=simulations, plots=plots)
 
     def parse_dc_analysis(self) -> DCAnalysis:
         self.consume(TokenType.KEYWORD, 'dc')
-        
-        # Check for sweep parameters
-        sweep_variable = None
-        start_value = None
-        stop_value = None
-        step_value = None
-        
-        if self.current.type == TokenType.SYMBOL and self.current.value == '(':
-            self.consume(TokenType.SYMBOL, '(')
-            sweep_variable = self.consume(TokenType.IDENTIFIER).value
-            self.consume(TokenType.SYMBOL, ',')
-            start_value = self.parse_expression()
-            self.consume(TokenType.SYMBOL, ',')
-            stop_value = self.parse_expression()
-            self.consume(TokenType.SYMBOL, ',')
-            step_value = self.parse_expression()
-            self.consume(TokenType.SYMBOL, ')')
-        
-        self.consume(TokenType.SYMBOL, ';')
-        
-        return self.create_node(
-            DCAnalysis,
-            sweep_variable=sweep_variable,
-            start_value=start_value,
-            stop_value=stop_value,
-            step_value=step_value
-        )
+        return self.create_node(DCAnalysis)
 
     def parse_ac_analysis(self) -> ACAnalysis:
         self.consume(TokenType.KEYWORD, 'ac')
         self.consume(TokenType.SYMBOL, '(')
         
-        # Default to decade sweep
-        analysis_type = "dec"
+        # Parse analysis type (dec, oct, or lin)
+        analysis_type = "dec"  # Default to decade sweep
         if self.current.type == TokenType.IDENTIFIER:
             analysis_type = self.consume(TokenType.IDENTIFIER).value
+            if analysis_type not in ["dec", "oct", "lin"]:
+                raise ParserError(f"Invalid AC analysis type: {analysis_type}. Must be 'dec', 'oct', or 'lin'", self.current)
             self.consume(TokenType.SYMBOL, ',')
         
-        # Points specification
-        points = int(self.parse_expression().value) if hasattr(self.parse_expression(), 'value') else 10
-        self.consume(TokenType.SYMBOL, ',')
+        # Parse number of points
+        points = 10  # Default number of points
+        if self.current.type == TokenType.NUMBER:
+            points = int(self.parse_expression().value)
+            self.consume(TokenType.SYMBOL, ',')
         
+        # Parse frequency range
         start_frequency = self.parse_expression()
         self.consume(TokenType.SYMBOL, ',')
         stop_frequency = self.parse_expression()
         
         self.consume(TokenType.SYMBOL, ')')
-        self.consume(TokenType.SYMBOL, ';')
         
         return self.create_node(
             ACAnalysis,
@@ -493,7 +511,6 @@ class Parser:
             start_time = self.parse_expression()
         
         self.consume(TokenType.SYMBOL, ')')
-        self.consume(TokenType.SYMBOL, ';')
         
         return self.create_node(
             TransientAnalysis,
@@ -521,7 +538,6 @@ class Parser:
         stop_frequency = self.parse_expression()
         
         self.consume(TokenType.SYMBOL, ')')
-        self.consume(TokenType.SYMBOL, ';')
         
         return self.create_node(
             NoiseAnalysis,
@@ -538,8 +554,6 @@ class Parser:
         self.consume(TokenType.KEYWORD, 'paramSweep')
         self.consume(TokenType.SYMBOL, '(')
         
-        # This is a wrapper around another analysis
-        # For now, assume it's a simple parameter sweep
         parameter_name = self.consume(TokenType.IDENTIFIER).value
         self.consume(TokenType.SYMBOL, ',')
         start_value = self.parse_expression()
@@ -549,7 +563,6 @@ class Parser:
         step_value = self.parse_expression()
         
         self.consume(TokenType.SYMBOL, ')')
-        self.consume(TokenType.SYMBOL, ';')
         
         # Create a default DC analysis as the base
         base_analysis = self.create_node(DCAnalysis)
@@ -656,14 +669,28 @@ class Parser:
                         # Parameter override
                         parameter_overrides[key] = self.parse_expression()
                 else:
-                    raise ParserError("Subcircuit instances require named parameters", self.current)
+                    # Provide a more helpful error message
+                    if self.current.type == TokenType.IDENTIFIER:
+                        raise ParserError(
+                            f"Subcircuit '{subcircuit_name}' requires named parameters. "
+                            f"Instead of '{self.current.value}', use 'paramName={self.current.value}'",
+                            self.current
+                        )
+                    else:
+                        raise ParserError(
+                            f"Subcircuit '{subcircuit_name}' requires named parameters in the format 'paramName=value'",
+                            self.current
+                        )
 
                 if self.current.type == TokenType.SYMBOL and self.current.value == ',':
                     self.consume(TokenType.SYMBOL, ',')
                 elif self.current.type == TokenType.SYMBOL and self.current.value == ')':
                     break
                 else:
-                    raise ParserError("Expected ',' or ')' in subcircuit instance", self.current)
+                    raise ParserError(
+                        f"Expected ',' or ')' in subcircuit '{subcircuit_name}' instance parameters",
+                        self.current
+                    )
 
             self.consume(TokenType.SYMBOL, ')')
 

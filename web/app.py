@@ -5,6 +5,14 @@ import os
 import json
 import math
 from typing import Dict, List, Tuple, Set, Optional, Any
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
 
 # Add the parent directory to the Python path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -24,6 +32,7 @@ app = Flask(__name__,
     static_folder='static',
     template_folder='templates',
     static_url_path='')
+app.logger.setLevel(logging.DEBUG)
 
 class EnhancedVisualizationVisitor(VisualizationVisitor):
     """Extended visualization visitor with better layout and error handling"""
@@ -444,55 +453,36 @@ def validate_code():
 
 @app.route('/api/run', methods=['POST'])
 def run_code():
-    """Parse DSL code and return visualization data"""
-    code = request.json.get('code', '')
-    
-    if not code.strip():
-        return jsonify({'error': 'Empty code provided', 'type': 'ValidationError'}), 400
-    
+    """Run the circuit simulation and return results"""
     try:
-        # Tokenize
-        lexer = Lexer(code)
+        # Get the DSL code from the request
+        data = request.get_json()
+        if not data or 'code' not in data:
+            return jsonify({'error': 'No code provided'}), 400
+        
+        dsl_code = data['code']
+        
+        # Lexical analysis
+        lexer = Lexer(dsl_code)
         tokens = lexer.tokenize()
         
-        if not tokens:
-            return jsonify({'error': 'No valid tokens found', 'type': 'LexerError'}), 400
-        
-        # Parse
+        # Parsing
         parser = Parser(tokens)
         program = parser.parse()
         
-        if not program:
-            return jsonify({'error': 'Failed to parse program', 'type': 'ParserError'}), 400
+        # Semantic analysis
+        analyzer = SemanticAnalyzer(program)  # Pass the program to the analyzer
+        analyzer.analyze()
         
-        # Visualize
+        # Process the program
         visualizer = EnhancedInteractiveVisualizer()
         result = visualizer.process_program(program)
         
-        return jsonify({
-            'status': 'success',
-            'result': result
-        })
+        return jsonify(result)
         
     except Exception as e:
-        error_type = type(e).__name__
-        error_msg = str(e)
-        
-        # Provide more helpful error messages
-        if 'token' in error_msg.lower():
-            error_type = 'SyntaxError'
-        elif 'parse' in error_msg.lower():
-            error_type = 'ParseError'
-        
-        return jsonify({
-            'status': 'error',
-            'error': error_msg,
-            'type': error_type,
-            'components': [],
-            'subcircuit_instances': [],
-            'connections': [],
-            'nodes': {}
-        }), 400
+        app.logger.error(f"Error processing DSL: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/format', methods=['POST'])
 def format_code():
@@ -580,6 +570,11 @@ def export_netlist():
     """Export circuit as SPICE netlist"""
     # This would require a separate netlist generation visitor
     return jsonify({'error': 'Netlist export not implemented yet'}), 501
+
+@app.errorhandler(Exception)
+def handle_all_errors(e):
+    app.logger.exception("Unhandled exception")
+    return jsonify(success=False, error=str(e)), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 

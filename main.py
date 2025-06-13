@@ -208,5 +208,24 @@ def main():
         sys.exit(1)
 
 
+def draw_circuit(dsl_code: str) -> dict:
+    # Tokenize
+    tokens = Lexer(dsl_code).tokenize()
+    # Parse
+    program = Parser(tokens).parse()
+    # Interpret (or build netlist/graph)
+    interpreter = Interpreter()
+    netlist = interpreter.generate_netlist(program)
+    # Convert to nodes/edges for visualization (example structure)
+    nodes = []
+    edges = []
+    # Example: adapt to your netlist structure
+    for comp in netlist.get('components', []):
+        nodes.append({"id": comp.get("name", ""), "type": comp.get("type", "")})
+    for conn in netlist.get('connections', []):
+        edges.append({"from": conn.get("from", ""), "to": conn.get("to", "")})
+    return {"nodes": nodes, "edges": edges}
+
+
 if __name__ == "__main__":
     main()

@@ -147,4 +147,51 @@ body, html {
         min-width: 180px;
         height: 220px;
     }
+}
+
+.status-message {
+    padding: 8px 12px;
+    margin: 8px 0;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.status-message.running {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.status-message.success {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-message.error {
+    background-color: #ffebee;
+    color: #c62828;
+}
+
+.error-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #ffebee;
+    color: #c62828;
+    padding: 12px 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 1000;
+    max-width: 80%;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 } 

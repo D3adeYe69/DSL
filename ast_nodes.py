@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Union, Optional, Any
+from typing import List, Dict, Union, Optional, Any, Set
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -467,21 +467,60 @@ class ValidationVisitor(ASTVisitor):
     def __init__(self):
         self.errors: List[str] = []
         self.warnings: List[str] = []
+        self.component_types = {
+            'VOLTAGE_SOURCE': ['value', 'frequency', 'amplitude', 'phase'],
+            'CURRENT_SOURCE': ['value', 'frequency', 'amplitude', 'phase'],
+            'RESISTOR': ['resistance'],
+            'CAPACITOR': ['capacitance'],
+            'INDUCTOR': ['inductance'],
+            'AC_SOURCE': ['frequency', 'amplitude', 'phase'],
+            'DC_SOURCE': ['value'],
+            'DIODE': ['model'],
+            'TRANSISTOR': ['model'],
+            'OPAMP': ['model']
+        }
+        self.unit_types = {
+            'value': ['V', 'A'],
+            'resistance': ['ohm', 'kohm', 'Mohm'],
+            'capacitance': ['F', 'nF', 'uF', 'pF'],
+            'inductance': ['H', 'mH', 'uH', 'nH'],
+            'frequency': ['Hz', 'kHz', 'MHz', 'GHz'],
+            'time': ['s', 'ms', 'us', 'ns']
+        }
     
     def visit_ComponentDeclaration(self, node: ComponentDeclaration):
-        # Check for required parameters, valid component types, etc.
-        if not node.instance_name:
-            self._add_error(node, "Component must have an instance name")
-        
+        """Validate component declaration"""
+        if node.type not in self.component_types:
+            self.errors.append(f"Unknown component type: {node.type}")
+            return
+
+        # Check required parameters
+        required_params = self.component_types[node.type]
+        for param in required_params:
+            if param not in node.parameters:
+                self.errors.append(f"Missing required parameter '{param}' for {node.type} {node.name}")
+
+        # Check parameter values and units
+        for param_name, value in node.parameters.items():
+            if param_name not in required_params:
+                self.warnings.append(f"Unknown parameter '{param_name}' for {node.type} {node.name}")
+                continue
+
+            # Check if value has a unit
+            if isinstance(value, str) and any(unit in value for unit in self.unit_types.get(param_name, [])):
+                continue
+            elif isinstance(value, (int, float)):
+                self.warnings.append(f"Parameter '{param_name}' for {node.type} {node.name} should have a unit")
+    
     def visit_SubcircuitInstance(self, node: SubcircuitInstance):
         # Validate subcircuit exists, port connections are valid, etc.
         if not node.subcircuit_name:
-            self._add_error(node, "Subcircuit instance must specify subcircuit name")
+            self.errors.append(f"Subcircuit instance must specify subcircuit name")
     
     def visit_Connection(self, node: Connection):
         # Validate endpoint connectivity, terminal existence, etc.
         if len(node.endpoints) < 2:
-            self._add_error(node, "Connection must have at least 2 endpoints")
+            self.errors.append("Connection must have at least 2 endpoints")
     
     def _add_error(self, node: ASTNode, message: str):
         if node.source_location:

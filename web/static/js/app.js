@@ -291,30 +291,44 @@ function showComponentDetails(component) {
     `;
 }
 
-// Toolbar Actions
-const runBtn = document.getElementById('run-code');
-if (runBtn) {
-    runBtn.addEventListener('click', function() {
+// Run Code Button Handler
+document.getElementById('run-code').addEventListener('click', async () => {
+    try {
+        // Get the code from the editor
         const code = editor.getValue();
-        fetch('/run', {
+        console.log("About to POST DSL:", JSON.stringify({ code }, null, 2));
+
+        // Show loading state
+        document.querySelector('.status-message').textContent = 'Running...';
+
+        // Send the code to the backend
+        const response = await fetch('/api/run', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dsl: code })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                renderCircuit(data.data);
-                showError('');
-            } else {
-                showError(data.error || 'Unknown error');
-            }
-        })
-        .catch(err => {
-            showError('Network or server error: ' + err);
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ code })
         });
-    });
-}
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to run code');
+        }
+
+        // Update the visualization
+        if (result.data) {
+            renderCircuit(result.data);
+            document.querySelector('.status-message').textContent = 'Success';
+        } else {
+            document.querySelector('.status-message').textContent = 'No data returned';
+        }
+    } catch (error) {
+        console.error('Error running code:', error);
+        document.querySelector('.status-message').textContent = `Error: ${error.message}`;
+        showError(error.message);
+    }
+});
 
 document.getElementById('clear-canvas').addEventListener('click', () => {
     layer.destroyChildren();
@@ -375,21 +389,96 @@ document.getElementById('reset-view').addEventListener('click', () => {
 });
 
 // Show error in terminal
-function showError(msg) {
-    const terminal = document.getElementById('terminal');
-    if (terminal) {
-        terminal.textContent = msg ? 'Error: ' + msg : '';
-        terminal.style.color = msg ? '#ff5555' : '#e0e0e0';
-    }
+function showError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.textContent = message;
+    
+    // Remove any existing error messages
+    const existingErrors = document.querySelectorAll('.error-message');
+    existingErrors.forEach(err => err.remove());
+    
+    // Add the new error message
+    document.body.appendChild(errorDiv);
+    
+    // Remove after 5 seconds
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 5000);
 }
 
 // Placeholder: Render circuit visualization
 function renderCircuit(data) {
-    const canvas = document.getElementById('circuit-canvas');
-    if (!canvas) return;
-    // For now, just show the JSON as a string
-    canvas.innerHTML = '<pre style="color:#222;font-size:1rem">' + JSON.stringify(data, null, 2) + '</pre>';
-    // TODO: Replace with actual drawing logic using Konva/D3
+    if (!data) {
+        showError('No circuit data received');
+        return;
+    }
+
+    // Clear existing circuit
+    layer.destroyChildren();
+    
+    // Draw grid if enabled
+    if (circuitState.showGrid) {
+        drawGrid();
+    }
+
+    try {
+        // Draw components
+        if (data.components) {
+            data.components.forEach(comp => {
+                const template = componentTemplates[comp.type];
+                if (template) {
+                    const position = data.layout?.positions?.[comp.id] || { x: 0, y: 0 };
+                    const component = template.draw(position.x, position.y);
+                    component.setAttr('id', comp.id);
+                    component.setAttr('value', comp.value);
+                    layer.add(component);
+                }
+            });
+        }
+
+        // Draw connections
+        if (data.connections) {
+            data.connections.forEach(conn => {
+                const points = [];
+                if (data.layout?.connections?.[conn.id]) {
+                    points.push(...data.layout.connections[conn.id]);
+                }
+                
+                if (points.length >= 4) {
+                    const line = new Konva.Line({
+                        points: points,
+                        stroke: '#000',
+                        strokeWidth: 2,
+                        lineCap: 'round',
+                        lineJoin: 'round'
+                    });
+                    layer.add(line);
+                }
+            });
+        }
+
+        // Draw labels if enabled
+        if (circuitState.showLabels) {
+            layer.children.forEach(child => {
+                if (child.getAttr('id')) {
+                    const label = new Konva.Text({
+                        x: child.x(),
+                        y: child.y() + 30,
+                        text: `${child.getAttr('id')}: ${child.getAttr('value')}`,
+                        fontSize: 14,
+                        fill: '#000'
+                    });
+                    layer.add(label);
+                }
+            });
+        }
+
+        layer.draw();
+    } catch (error) {
+        console.error('Error rendering circuit:', error);
+        showError('Error rendering circuit: ' + error.message);
+    }
 }
 
 // Window Resize Handler

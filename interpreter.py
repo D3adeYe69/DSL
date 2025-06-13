@@ -226,21 +226,41 @@ class ValidationVisitor:
 
     def validate_component(self, comp: ComponentDeclaration):
         """Validate component declaration"""
+        # Check component type
+        valid_types = {
+            'Resistor', 'Capacitor', 'Inductor', 'VoltageSource', 
+            'CurrentSource', 'ACSource', 'Ammeter'
+        }
+        if comp.type_name not in valid_types:
+            self.add_error(f"Invalid component type: {comp.type_name}", comp)
+            return
+
+        # Check instance name
         if comp.instance_name in self.component_names:
             self.add_error(f"Duplicate component name: {comp.instance_name}", comp)
         self.component_names.add(comp.instance_name)
 
-        # Validate component type exists (for subcircuit instances)
-        if isinstance(comp, SubcircuitInstance):
-            if comp.type_name not in self.subcircuit_names:
-                self.add_error(f"Undefined subcircuit type: {comp.type_name}", comp)
-
-        # Validate parameter expressions
-        for param in comp.positional_params:
-            self.validate_expression(param)
-
-        for param in comp.named_params.values():
-            self.validate_expression(param)
+        # Check parameters
+        if comp.type_name == 'Resistor':
+            if 'resistance' not in comp.named_params:
+                self.add_error("Resistor requires 'resistance' parameter", comp)
+        elif comp.type_name == 'Capacitor':
+            if 'capacitance' not in comp.named_params:
+                self.add_error("Capacitor requires 'capacitance' parameter", comp)
+        elif comp.type_name == 'Inductor':
+            if 'inductance' not in comp.named_params:
+                self.add_error("Inductor requires 'inductance' parameter", comp)
+        elif comp.type_name == 'VoltageSource':
+            if 'value' not in comp.named_params:
+                self.add_error("VoltageSource requires 'value' parameter", comp)
+        elif comp.type_name == 'CurrentSource':
+            if 'value' not in comp.named_params:
+                self.add_error("CurrentSource requires 'value' parameter", comp)
+        elif comp.type_name == 'ACSource':
+            if 'frequency' not in comp.named_params:
+                self.add_error("ACSource requires 'frequency' parameter", comp)
+            if 'amplitude' not in comp.named_params:
+                self.add_error("ACSource requires 'amplitude' parameter", comp)
 
     def validate_connection(self, conn: Connection):
         """Validate connection"""

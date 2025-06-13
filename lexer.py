@@ -1,46 +1,52 @@
 import re
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 class TokenType(Enum):
-    IDENTIFIER = auto()
-    NUMBER = auto()
-    COMPONENT = auto()
-    CONNECT = auto()
-    SUBCIRCUIT = auto()
-    SIMULATE = auto()
-    SYMBOL = auto()
-    OPERATOR = auto()
-    LAW = auto()
-    WIRE = auto()
-    GROUND = auto()
-    NODE = auto()
-    NET = auto()
-    UNIT_PREFIX = auto()
-    UNIT_BASE = auto()
-    UNIT = auto()  # Combined unit token
-    KEYWORD = auto()
-    COMMENT_SINGLE = auto()
-    COMMENT_BLOCK = auto()
-    STRING = auto()  # For string literals
-    EOF = auto()
+    # Component types
+    RESISTOR = 'RESISTOR'
+    CAPACITOR = 'CAPACITOR'
+    INDUCTOR = 'INDUCTOR'
+    VOLTAGE_SOURCE = 'VOLTAGE_SOURCE'
+    CURRENT_SOURCE = 'CURRENT_SOURCE'
+    AC_SOURCE = 'AC_SOURCE'
+    AMMETER = 'AMMETER'
+    
+    # Keywords
+    CONNECT = 'CONNECT'
+    SUBCIRCUIT = 'SUBCIRCUIT'
+    SIMULATE = 'SIMULATE'
+    GROUND = 'GROUND'
+    
+    # Other tokens
+    IDENTIFIER = 'IDENTIFIER'
+    NUMBER = 'NUMBER'
+    SYMBOL = 'SYMBOL'
+    OPERATOR = 'OPERATOR'
+    UNIT = 'UNIT'
+    KEYWORD = 'KEYWORD'
+    COMMENT_SINGLE = 'COMMENT_SINGLE'
+    COMMENT_BLOCK = 'COMMENT_BLOCK'
+    STRING = 'STRING'
+    EOF = 'EOF'
 
 # Token regex specification
 TOKEN_SPECIFICATION = [
-    # Language keywords and component types
-    ('COMPONENT', r'\b(?:Resistor|Capacitor|Inductor|VoltageSource|CurrentSource|Ammeter|Diode|BJT|MOSFET|OpAmp)\b'),
-    ('WIRE', r'\bWire\b'),
+    # Component types
+    ('RESISTOR', r'\bResistor\b'),
+    ('CAPACITOR', r'\bCapacitor\b'),
+    ('INDUCTOR', r'\bInductor\b'),
+    ('VOLTAGE_SOURCE', r'\bVoltageSource\b'),
+    ('CURRENT_SOURCE', r'\bCurrentSource\b'),
+    ('AC_SOURCE', r'\bACSource\b'),
+    ('AMMETER', r'\bAmmeter\b'),
+    
+    # Keywords
     ('CONNECT', r'\bConnect\b'),
     ('SUBCIRCUIT', r'\bSubcircuit\b'),
     ('SIMULATE', r'\bSimulate\b'),
-    ('LAW', r'\b(?:OhmLaw|KCL|KVL)\b'),
     ('GROUND', r'\bground\b'),
-    ('NODE', r'\bnode\b'),
-    ('NET', r'\bNet\b'),
-    
-    # Extended keywords including paramSweep and analysis types
-    ('KEYWORD', r'\b(?:dc|transient|ac|noise|monte|paramSweep|sweep|analysis|plot|print|save|include|lib|model|param|if|else|for|while|def|return|import|from|as)\b'),
     
     # Units with proper separation of prefix and base
     ('UNIT', r'\b(?:[munpfakMGTPE])?(?:Ohm|ohm|F|H|V|A|Hz|S|W|C|T|N|lx|Bq|Gy|Sv|kat|m|g|s|K|mol|cd)\b'),
@@ -60,8 +66,8 @@ TOKEN_SPECIFICATION = [
     # Symbols and delimiters
     ('SYMBOL', r'[(),;{}\[\]\.:]'),
     
-    # Comments
-    ('COMMENT_SINGLE', r'//[^\n]*'),
+    # Comments (both # and // style)
+    ('COMMENT_SINGLE', r'//[^\n]*|#[^\n]*'),
     ('COMMENT_BLOCK', r'/\*[\s\S]*?\*/'),
     
     # Skip whitespace
@@ -77,13 +83,10 @@ _token_re = re.compile(_master_regex)
 
 @dataclass
 class Token:
-    type: TokenType
+    type: str
     value: str
     line: int
     column: int
-    
-    def __str__(self):
-        return f"Token({self.type.name}, {self.value!r}, {self.line}:{self.column})"
 
 class LexerError(Exception):
     """Custom exception for lexer errors"""
@@ -94,79 +97,162 @@ class LexerError(Exception):
         super().__init__(f"Line {line}, Column {column}: {message}")
 
 class Lexer:
-    def __init__(self, code: str, filename: str = "<input>"):
-        self.code = code
-        self.filename = filename
-        self.position = 0
+    def __init__(self, text: str):
+        self.text = text
+        self.pos = 0
+        self.current_char = self.text[0] if text else None
         self.line = 1
         self.column = 1
         self.tokens = []
+        
+        # Component type mapping
+        self.component_types = {
+            'VOLTAGE_SOURCE': ['value', 'frequency', 'amplitude', 'phase'],
+            'CURRENT_SOURCE': ['value', 'frequency', 'amplitude', 'phase'],
+            'RESISTOR': ['resistance'],
+            'CAPACITOR': ['capacitance'],
+            'INDUCTOR': ['inductance'],
+            'AC_SOURCE': ['frequency', 'amplitude', 'phase'],
+            'DC_SOURCE': ['value'],
+            'DIODE': ['model'],
+            'TRANSISTOR': ['model'],
+            'OPAMP': ['model']
+        }
+        
+        # Units with proper separation of prefix and base
+        self.unit_types = {
+            'value': ['V', 'A'],
+            'resistance': ['ohm', 'kohm', 'Mohm'],
+            'capacitance': ['F', 'nF', 'uF', 'pF'],
+            'inductance': ['H', 'mH', 'uH', 'nH'],
+            'frequency': ['Hz', 'kHz', 'MHz', 'GHz'],
+            'time': ['s', 'ms', 'us', 'ns']
+        }
+        
+        # Keywords
+        self.keywords = {
+            'SUBCIRCUIT': 'SUBCIRCUIT',
+            'CONNECT': 'CONNECT',
+            'SIMULATE': 'SIMULATE',
+            'DC': 'DC',
+            'AC': 'AC',
+            'TRANSIENT': 'TRANSIENT',
+            'NOISE': 'NOISE',
+            'MONTE_CARLO': 'MONTE_CARLO',
+            'PARAMETRIC': 'PARAMETRIC',
+            'PLOT': 'PLOT'
+        }
     
-    def tokenize(self) -> List[Token]:
-        """Tokenize the input code into a list of tokens"""
-        tokens: List[Token] = []
-        pos = 0
-        
-        for mo in _token_re.finditer(self.code):
-            kind = mo.lastgroup
-            value = mo.group()
-            start = mo.start()
-            
-            # Calculate line and column position
-            segment = self.code[pos:start]
-            newlines = segment.count('\n')
-            if newlines > 0:
-                self.line += newlines
-                self.column = start - segment.rfind('\n')
-            else:
-                self.column = start - pos + 1
-            
-            # Skip whitespace and comments
-            if kind in ('SKIP', 'COMMENT_SINGLE', 'COMMENT_BLOCK'):
-                pos = mo.end()
+    def error(self, message: str):
+        raise Exception(f'Error: Line {self.line}, Column {self.column}: {message}')
+
+    def advance(self):
+        self.pos += 1
+        if self.pos < len(self.text):
+            self.current_char = self.text[self.pos]
+            self.column += 1
+        else:
+            self.current_char = None
+
+    def skip_whitespace(self):
+        while self.current_char is not None and self.current_char.isspace():
+            if self.current_char == '\n':
+                self.line += 1
+                self.column = 1
+            self.advance()
+
+    def skip_comment(self):
+        while self.current_char is not None and self.current_char != '\n':
+            self.advance()
+        if self.current_char == '\n':
+            self.line += 1
+            self.column = 1
+            self.advance()
+
+    def number(self):
+        result = ''
+        while self.current_char is not None and (self.current_char.isdigit() or self.current_char == '.'):
+            result += self.current_char
+            self.advance()
+        return Token('NUMBER', result, self.line, self.column - len(result))
+
+    def id(self):
+        result = ''
+        while self.current_char is not None and (self.current_char.isalnum() or self.current_char == '_' or self.current_char == '.'):
+            result += self.current_char
+            self.advance()
+        return Token('ID', result, self.line, self.column - len(result))
+
+    def get_next_token(self):
+        while self.current_char is not None:
+            if self.current_char.isspace():
+                self.skip_whitespace()
                 continue
-            
-            # Handle unrecognized tokens
-            if kind == 'MISMATCH':
-                raise LexerError(f"Unexpected character {value!r}", self.line, self.column)
-            
-            # Create token
-            try:
-                token_type = TokenType[kind]
-            except KeyError:
-                raise LexerError(f"Unknown token type {kind}", self.line, self.column)
-            
-            # Post-process certain tokens
-            if kind == 'NUMBER':
-                # Process number token
-                tokens.append(Token(token_type, value, self.line, self.column))
-                
-                # Look ahead for unit
-                next_pos = mo.end()
-                if next_pos < len(self.code):
-                    next_match = _token_re.match(self.code, next_pos)
-                    if next_match and next_match.lastgroup == 'UNIT':
-                        unit_value = next_match.group()
-                        tokens.append(Token(TokenType.UNIT, unit_value, self.line, self.column + len(value)))
-                        pos = next_match.end()
-                        continue
-            else:
-                tokens.append(Token(token_type, value, self.line, self.column))
-            
-            pos = mo.end()
-        
-        # Add EOF token
-        tokens.append(Token(TokenType.EOF, '', self.line, self.column))
-        return tokens
+
+            if self.current_char == '#':
+                self.skip_comment()
+                continue
+
+            if self.current_char.isdigit():
+                return self.number()
+
+            if self.current_char.isalpha() or self.current_char == '_':
+                id_str = self.id().value
+                if id_str in self.component_types:
+                    return Token(id_str, id_str, self.line, self.column - len(id_str))
+                elif id_str in self.keywords:
+                    return Token(self.keywords[id_str], id_str, self.line, self.column - len(id_str))
+                else:
+                    return Token('ID', id_str, self.line, self.column - len(id_str))
+
+            if self.current_char == '(':
+                self.advance()
+                return Token('LPAREN', '(', self.line, self.column - 1)
+
+            if self.current_char == ')':
+                self.advance()
+                return Token('RPAREN', ')', self.line, self.column - 1)
+
+            if self.current_char == '{':
+                self.advance()
+                return Token('LBRACE', '{', self.line, self.column - 1)
+
+            if self.current_char == '}':
+                self.advance()
+                return Token('RBRACE', '}', self.line, self.column - 1)
+
+            if self.current_char == ';':
+                self.advance()
+                return Token('SEMICOLON', ';', self.line, self.column - 1)
+
+            if self.current_char == ',':
+                self.advance()
+                return Token('COMMA', ',', self.line, self.column - 1)
+
+            if self.current_char == '=':
+                self.advance()
+                return Token('EQUALS', '=', self.line, self.column - 1)
+
+            self.error(f'Invalid character: {self.current_char}')
+
+        return Token('EOF', '', self.line, self.column)
+
+    def tokenize(self):
+        while True:
+            token = self.get_next_token()
+            self.tokens.append(token)
+            if token.type == 'EOF':
+                break
+        return self.tokens
 
 # Utility functions for working with tokens
 def is_component_type(token: Token) -> bool:
     """Check if token represents a component type"""
-    return token.type == TokenType.COMPONENT
+    return token.type in ['VOLTAGE_SOURCE', 'CURRENT_SOURCE', 'RESISTOR', 'CAPACITOR', 'INDUCTOR', 'AC_SOURCE', 'DC_SOURCE', 'DIODE', 'TRANSISTOR', 'OPAMP']
 
 def is_keyword(token: Token, keyword: str) -> bool:
-    """Check if token is a specific keyword"""
-    return token.type == TokenType.KEYWORD and token.value == keyword
+    """Check if token represents a keyword"""
+    return token.type == keyword
 
 def is_operator(token: Token, operator: str) -> bool:
     """Check if token is a specific operator"""
