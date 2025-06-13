@@ -1,22 +1,29 @@
+from flask import Flask, render_template, request, jsonify, send_from_directory
+from pathlib import Path
 import sys
 import os
-
-# Add the parent directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from flask import Flask, render_template, jsonify, request
 import json
 import math
-from typing import Dict, List, Tuple, Set, Optional
+from typing import Dict, List, Tuple, Set, Optional, Any
+
+# Add the parent directory to the Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 from lexer import Lexer
 from parser import Parser
+from semantic import SemanticAnalyzer
+from interpreter import Interpreter
 from ast_nodes import (
     Program, ComponentDeclaration, SubcircuitInstance, Connection, 
     Terminal, Node, Subcircuit, VisualizationVisitor, ValidationVisitor,
-    SimulationNode, AnalysisBlock, VariableDeclaration
+    SimulationNode, AnalysisBlock, VariableDeclaration, DCAnalysis, ACAnalysis,
+    TransientAnalysis, NoiseAnalysis, MonteCarloAnalysis, ParametricAnalysis, PlotCommand
 )
 
-app = Flask(__name__)
+app = Flask(__name__, 
+    static_folder='static',
+    template_folder='templates',
+    static_url_path='')
 
 class EnhancedVisualizationVisitor(VisualizationVisitor):
     """Extended visualization visitor with better layout and error handling"""
@@ -81,21 +88,18 @@ class EnhancedVisualizationVisitor(VisualizationVisitor):
         }
         
         for sim in node.simulations:
-            sim_data = self._process_simulation(sim)
+            sim_data = self.visit_simulation(sim)
             if sim_data:
                 analysis_data['simulations'].append(sim_data)
         
         for plot in node.plots:
-            plot_data = {
-                'variables': plot.variables,
-                'type': plot.plot_type,
-                'options': plot.options
-            }
-            analysis_data['plots'].append(plot_data)
+            plot_data = self.visit_plot(plot)
+            if plot_data:
+                analysis_data['plots'].append(plot_data)
         
         self.simulation_blocks.append(analysis_data)
     
-    def _process_simulation(self, sim: SimulationNode) -> Optional[Dict]:
+    def visit_simulation(self, sim: SimulationNode) -> Optional[Dict]:
         """Process different types of simulation commands"""
         sim_type = type(sim).__name__
         
@@ -128,12 +132,37 @@ class EnhancedVisualizationVisitor(VisualizationVisitor):
         
         return None
     
+    def visit_plot(self, plot: PlotCommand) -> Optional[Dict]:
+        """Process different types of plot commands"""
+        plot_type = type(plot).__name__
+        
+        if plot_type == 'DCAnalysis':
+            return {
+                'variables': plot.variables,
+                'type': 'dc',
+                'options': plot.options
+            }
+        elif plot_type == 'ACAnalysis':
+            return {
+                'variables': plot.variables,
+                'type': 'ac',
+                'options': plot.options
+            }
+        elif plot_type == 'TransientAnalysis':
+            return {
+                'variables': plot.variables,
+                'type': 'transient',
+                'options': plot.options
+            }
+        
+        return None
+    
     def _evaluate_expression(self, expr) -> Optional[float]:
         """Simple expression evaluation for visualization"""
         if not expr:
             return None
         
-        from ..ast_nodes import Literal, Identifier
+        from ast_nodes import Literal, Identifier
         
         if isinstance(expr, Literal):
             if isinstance(expr.value, (int, float)):
@@ -371,10 +400,50 @@ analysis main_analysis {
     except Exception as e:
         dsl_code = f'// Error loading circuit.dsl: {str(e)}'
     
-    return render_template('circuit.html', dsl_code=dsl_code)
+    return render_template('index.html', dsl_code=dsl_code)
 
-@app.route('/parse-dsl', methods=['POST'])
-def parse_dsl():
+@app.route('/styles/<path:filename>')
+def serve_styles(filename):
+    """Serve files from the styles directory"""
+    return send_from_directory('styles', filename)
+
+@app.route('/api/validate', methods=['POST'])
+def validate_code():
+    """Validate DSL code without full parsing"""
+    code = request.json.get('code', '')
+    
+    try:
+        # Lexical Analysis
+        lexer = Lexer(code)
+        tokens = lexer.tokenize()
+        
+        # Syntax Analysis
+        parser = Parser(tokens)
+        ast = parser.parse()
+        
+        # Semantic Analysis
+        analyzer = SemanticAnalyzer()
+        analyzer.visit(ast)
+        
+        # Run validation
+        validator = ValidationVisitor()
+        validator.visit(ast)
+        
+        return jsonify({
+            'status': 'success',
+            'valid': len(validator.errors) == 0,
+            'errors': validator.errors,
+            'warnings': validator.warnings,
+            'ast': ast.to_dict() if hasattr(ast, 'to_dict') else str(ast)
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
+
+@app.route('/api/run', methods=['POST'])
+def run_code():
     """Parse DSL code and return visualization data"""
     code = request.json.get('code', '')
     
@@ -400,7 +469,10 @@ def parse_dsl():
         visualizer = EnhancedInteractiveVisualizer()
         result = visualizer.process_program(program)
         
-        return jsonify(result)
+        return jsonify({
+            'status': 'success',
+            'result': result
+        })
         
     except Exception as e:
         error_type = type(e).__name__
@@ -413,6 +485,7 @@ def parse_dsl():
             error_type = 'ParseError'
         
         return jsonify({
+            'status': 'error',
             'error': error_msg,
             'type': error_type,
             'components': [],
@@ -421,8 +494,8 @@ def parse_dsl():
             'nodes': {}
         }), 400
 
-@app.route('/generate-dsl', methods=['POST'])
-def generate_dsl():
+@app.route('/api/format', methods=['POST'])
+def format_code():
     """Generate DSL code from visualization data"""
     try:
         data = request.json
@@ -491,45 +564,22 @@ def generate_dsl():
                 
                 lines.append("}")
         
-        return jsonify({'dsl': "\n".join(lines)})
-        
-    except Exception as e:
-        return jsonify({'error': f'Failed to generate DSL: {str(e)}'}), 400
-
-@app.route('/validate-dsl', methods=['POST'])
-def validate_dsl():
-    """Validate DSL code without full parsing"""
-    code = request.json.get('code', '')
-    
-    try:
-        lexer = Lexer(code)
-        tokens = lexer.tokenize()
-        
-        parser = Parser(tokens)
-        program = parser.parse()
-        
-        # Run validation
-        validator = ValidationVisitor()
-        validator.visit(program)
-        
         return jsonify({
-            'valid': len(validator.errors) == 0,
-            'errors': validator.errors,
-            'warnings': validator.warnings
+            'status': 'success',
+            'formatted_code': "\n".join(lines)
         })
         
     except Exception as e:
         return jsonify({
-            'valid': False,
-            'errors': [str(e)],
-            'warnings': []
-        })
+            'status': 'error',
+            'message': f'Failed to generate DSL: {str(e)}'
+        }), 400
 
-@app.route('/export-netlist', methods=['POST'])
+@app.route('/api/export-netlist', methods=['POST'])
 def export_netlist():
     """Export circuit as SPICE netlist"""
     # This would require a separate netlist generation visitor
     return jsonify({'error': 'Netlist export not implemented yet'}), 501
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000) 

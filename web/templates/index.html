@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circuit DSL Visualizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='../styles/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Components</h2>
+                <input type="text" class="search-input" placeholder="Search components...">
+            </div>
+            <div class="component-tabs">
+                <button class="tab-btn active" data-tab="passive">Passive</button>
+                <button class="tab-btn" data-tab="active">Active</button>
+                <button class="tab-btn" data-tab="sources">Sources</button>
+            </div>
+            <div class="component-list">
+                <div class="tab-content active" id="passive">
+                    <div class="component-item" draggable="true" data-type="Resistor">Resistor</div>
+                    <div class="component-item" draggable="true" data-type="Capacitor">Capacitor</div>
+                    <div class="component-item" draggable="true" data-type="Inductor">Inductor</div>
+                </div>
+                <div class="tab-content" id="active">
+                    <div class="component-item" draggable="true" data-type="Transistor">Transistor</div>
+                    <div class="component-item" draggable="true" data-type="Diode">Diode</div>
+                    <div class="component-item" draggable="true" data-type="OpAmp">Op-Amp</div>
+                </div>
+                <div class="tab-content" id="sources">
+                    <div class="component-item" draggable="true" data-type="VoltageSource">Voltage Source</div>
+                    <div class="component-item" draggable="true" data-type="CurrentSource">Current Source</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="tool-group">
+                    <button class="tool-btn" id="run-code">Run Code</button>
+                    <button class="tool-btn" id="clear-canvas">Clear</button>
+                    <button class="tool-btn" id="export-circuit">Export</button>
+                </div>
+                <div class="tool-group">
+                    <button class="tool-btn" id="zoom-in">+</button>
+                    <button class="tool-btn" id="zoom-out">-</button>
+                    <button class="tool-btn" id="reset-view">Reset View</button>
+                </div>
+            </div>
+
+            <!-- Split View -->
+            <div class="split-view">
+                <!-- Code Editor -->
+                <div class="editor-container">
+                    <div class="editor-header">
+                        <h3>Circuit DSL Code</h3>
+                        <div class="editor-tools">
+                            <button class="editor-btn" id="format-code">Format</button>
+                            <button class="editor-btn" id="save-code">Save</button>
+                        </div>
+                    </div>
+                    <textarea id="code-editor"></textarea>
+                </div>
+
+                <!-- Canvas -->
+                <div class="canvas-container">
+                    <div class="canvas-header">
+                        <h3>Circuit Visualization</h3>
+                        <div class="canvas-tools">
+                            <button class="canvas-btn" id="toggle-grid">Grid</button>
+                            <button class="canvas-btn" id="toggle-labels">Labels</button>
+                        </div>
+                    </div>
+                    <div id="circuit-canvas"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-message">Ready</div>
+            <div class="status-actions">
+                <button class="status-btn" id="show-errors">Errors</button>
+                <button class="status-btn" id="show-warnings">Warnings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/konva/8.3.2/konva.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html> 

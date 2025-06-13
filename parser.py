@@ -1,42 +1,26 @@
-from typing import List, Dict, Union, Optional
-from lexer import Token, TokenType
+from typing import List, Dict, Union, Optional, Any
+from lexer import Token, TokenType,UnitParser
 from ast_nodes import (
+    # Base classes
+    ASTNode, ExpressionNode,
+    
     # Expression nodes
-    ExpressionNode,
-    Literal,
-    Identifier,
-    BinaryOp,
-    UnaryOp,
-    FunctionCall,
-    ArrayLiteral,
+    Literal, Identifier, BinaryOp, UnaryOp, FunctionCall, ArrayLiteral,
     
     # Component and connection nodes
-    ComponentDeclaration,
-    SubcircuitInstance,
-    Terminal,
-    Node,
-    Connection,
+    ComponentDeclaration, SubcircuitInstance, Terminal, Node, Connection,
     
     # Simulation nodes
-    DCAnalysis,
-    ACAnalysis,
-    TransientAnalysis,
-    NoiseAnalysis,
-    MonteCarloAnalysis,
-    ParametricAnalysis,
-    PlotCommand,
-    AnalysisBlock,
+    SimulationNode, DCAnalysis, ACAnalysis, TransientAnalysis,
+    NoiseAnalysis, MonteCarloAnalysis, ParametricAnalysis,
+    PlotCommand, AnalysisBlock,
     
     # Structure nodes
-    Port,
-    Subcircuit,
-    VariableDeclaration,
-    ImportStatement,
-    Program,
+    Port, Subcircuit, VariableDeclaration, ImportStatement,
+    MacroDefinition, MacroInvocation, Program,
     
     # Helper functions
-    create_node_with_location,
-    SourceLocation,
+    create_node_with_location, SourceLocation
 )
 
 class ParserError(Exception):
@@ -131,7 +115,7 @@ class Parser:
                     # Pattern: varName = value - variable assignment
                     variables.append(self.parse_variable_assignment())
                 else:
-                    raise ParserError(f"Unexpected identifier pattern", self.current)
+                    raise ParserError("Unexpected identifier pattern", self.current)
 
             else:
                 raise ParserError(f"Unexpected token '{self.current.value}'", self.current)
@@ -268,116 +252,113 @@ class Parser:
         return self.parse_primary_expression()
 
     def parse_primary_expression(self) -> ExpressionNode:
+        """Parse a primary expression"""
+        # Numbers
         if self.current.type == TokenType.NUMBER:
-            value_str = self.consume(TokenType.NUMBER).value
-            # Handle different number formats
-            if '.' in value_str or 'e' in value_str.lower():
-                value = float(value_str)
-            else:
-                value = int(value_str)
+            value = float(self.current.value)
+            self.advance()
             
-            unit = None
+            # Check for unit after number
             if self.current.type == TokenType.UNIT:
-                unit = self.consume(TokenType.UNIT).value
-            
-            return self.create_node(Literal, value=value, unit=unit)
-        
-        elif self.current.type == TokenType.STRING:
-            value = self.consume(TokenType.STRING).value
-            # Remove quotes
-            value = value[1:-1]
+                unit = self.current.value
+                self.advance()
+                return self.create_node(Literal, value=value, unit=unit)
             return self.create_node(Literal, value=value)
         
-        elif self.current.type == TokenType.IDENTIFIER:
-            name = self.consume(TokenType.IDENTIFIER).value
-            
-            # Check for function call
-            if self.current.type == TokenType.SYMBOL and self.current.value == "(":
-                self.consume(TokenType.SYMBOL, "(")
-                args = []
-                
-                while self.current.type != TokenType.SYMBOL or self.current.value != ")":
-                    args.append(self.parse_expression())
-                    if self.current.type == TokenType.SYMBOL and self.current.value == ",":
-                        self.consume(TokenType.SYMBOL, ",")
-                    elif self.current.type == TokenType.SYMBOL and self.current.value == ")":
-                        break
-                    else:
-                        raise ParserError("Expected ',' or ')' in function call", self.current)
-                
-                self.consume(TokenType.SYMBOL, ")")
-                return self.create_node(FunctionCall, name=name, args=args)
-            else:
-                return self.create_node(Identifier, name=name)
+        # Units
+        if self.current.type == TokenType.UNIT:
+            value = self.current.value
+            self.advance()
+            return self.create_node(Literal, value=value)
         
-        elif self.current.type == TokenType.SYMBOL and self.current.value == "(":
-            self.consume(TokenType.SYMBOL, "(")
+        # Strings
+        if self.current.type == TokenType.STRING:
+            value = self.current.value
+            self.advance()
+            return self.create_node(Literal, value=value)
+        
+        # Identifiers
+        if self.current.type == TokenType.IDENTIFIER:
+            name = self.current.value
+            self.advance()
+            return self.create_node(Identifier, name=name)
+        
+        # Parenthesized expressions
+        if self.current.type == TokenType.SYMBOL and self.current.value == '(':
+            self.advance()
             expr = self.parse_expression()
             self.consume(TokenType.SYMBOL, ")")
             return expr
         
-        elif self.current.type == TokenType.SYMBOL and self.current.value == "[":
-            # Array literal
-            self.consume(TokenType.SYMBOL, "[")
-            elements = []
-            
-            while self.current.type != TokenType.SYMBOL or self.current.value != "]":
-                elements.append(self.parse_expression())
-                if self.current.type == TokenType.SYMBOL and self.current.value == ",":
-                    self.consume(TokenType.SYMBOL, ",")
-                elif self.current.type == TokenType.SYMBOL and self.current.value == "]":
-                    break
-                else:
-                    raise ParserError("Expected ',' or ']' in array literal", self.current)
-            
-            self.consume(TokenType.SYMBOL, "]")
-            return self.create_node(ArrayLiteral, elements=elements)
+        # Boolean literals
+        if self.current.type == TokenType.BOOLEAN:
+            value = self.current.value == 'true'
+            self.advance()
+            return self.create_node(Literal, value=1.0 if value else 0.0)
         
-        else:
-            raise ParserError(f"Unexpected token in expression: '{self.current.value}'", self.current)
+        # Ground reference
+        if self.current.type == TokenType.GROUND:
+            value = self.current.value
+            self.advance()
+            return self.create_node(Identifier, name=value)
+        
+        raise ParserError(f"Unexpected token in expression: '{self.current.value}'", self.current)
 
     def parse_component(self) -> ComponentDeclaration:
-        ctype = self.consume(TokenType.COMPONENT).value
-        name = self.consume(TokenType.IDENTIFIER).value
-        self.consume(TokenType.SYMBOL, '(')
-
-        positional_params = []
-        named_params = {}
-
-        while self.current.type != TokenType.SYMBOL or self.current.value != ')':
-            # Check if this is a named parameter
-            if (self.current.type == TokenType.IDENTIFIER and 
-                self.peek().type == TokenType.OPERATOR and 
-                self.peek().value == '='):
-                
-                # Named parameter
+        """Parse a component declaration"""
+        component_type = self.consume(TokenType.COMPONENT).value
+        component_name = self.consume(TokenType.IDENTIFIER).value
+        
+        # Parse parameters
+        self.consume(TokenType.SYMBOL, "Expected '(' after component name")  # Consume '('
+        parameters = {}
+        
+        # Handle empty parameter list
+        if self.match(TokenType.SYMBOL) and self.current.value == ')':
+            self.advance()  # Consume ')'
+            return self.create_node(
+                ComponentDeclaration,
+                type_name=component_type,
+                instance_name=component_name,
+                parameters=parameters
+            )
+        
+        # Parse parameters
+        while True:
+            # Check for named parameter (key=value)
+            if self.match(TokenType.IDENTIFIER) and self.peek().type == TokenType.OPERATOR and self.peek().value == '=':
                 key = self.consume(TokenType.IDENTIFIER).value
-                self.consume(TokenType.OPERATOR, '=')
-                value = self.parse_expression()
-                named_params[key] = value
+                self.consume(TokenType.OPERATOR, "Expected '=' in named parameter")  # Consume '='
+                parameters[key] = self.parse_expression()
             else:
-                # Positional parameter
-                if named_params:
-                    raise ParserError("Positional parameters cannot follow named parameters", self.current)
-                value = self.parse_expression()
-                positional_params.append(value)
-
-            if self.current.type == TokenType.SYMBOL and self.current.value == ',':
-                self.consume(TokenType.SYMBOL, ',')
-            elif self.current.type == TokenType.SYMBOL and self.current.value == ')':
+                # Handle positional parameters by creating default names
+                param_count = len(parameters)
+                if component_type == 'Resistor':
+                    param_name = 'resistance' if param_count == 0 else f'param_{param_count}'
+                elif component_type == 'VoltageSource':
+                    param_name = 'voltage' if param_count == 0 else f'param_{param_count}'
+                elif component_type == 'Capacitor':
+                    param_name = 'capacitance' if param_count == 0 else f'param_{param_count}'
+                else:
+                    param_name = f'param_{param_count}'
+                
+                parameters[param_name] = self.parse_expression()
+            
+            # Check for end of parameter list
+            if self.match(TokenType.SYMBOL) and self.current.value == ')':
+                self.advance()  # Consume ')'
                 break
+            elif self.match(TokenType.SYMBOL) and self.current.value == ',':
+                self.advance()  # Consume ','
+                continue
             else:
                 raise ParserError("Expected ',' or ')' in component parameters", self.current)
-
-        self.consume(TokenType.SYMBOL, ')')
-        self.consume(TokenType.SYMBOL, ';')
         
         return self.create_node(
             ComponentDeclaration,
-            type_name=ctype,
-            instance_name=name,
-            positional_params=positional_params,
-            named_params=named_params
+            type_name=component_type,
+            instance_name=component_name,
+            parameters=parameters
         )
 
     def parse_connection(self) -> Connection:
@@ -416,42 +397,35 @@ class Parser:
         return self.create_node(Connection, endpoints=endpoints)
 
     def parse_analysis_block(self) -> AnalysisBlock:
-        self.consume(TokenType.SIMULATE)
+        """Parse an analysis block containing multiple simulations"""
+        self.consume(TokenType.KEYWORD, "analysis")
         
         # Optional analysis block name
-        name = "default"
+        name = None
         if self.current.type == TokenType.IDENTIFIER:
             name = self.consume(TokenType.IDENTIFIER).value
         
-        self.consume(TokenType.SYMBOL, '{')
-        simulations = []
-        plots = []
-
-        while self.current.type != TokenType.SYMBOL or self.current.value != '}':
-            if self.current.type == TokenType.KEYWORD:
-                kw = self.current.value
-                
-                if kw == 'dc':
-                    simulations.append(self.parse_dc_analysis())
-                elif kw == 'ac':
-                    simulations.append(self.parse_ac_analysis())
-                elif kw == 'transient':
-                    simulations.append(self.parse_transient_analysis())
-                elif kw == 'noise':
-                    simulations.append(self.parse_noise_analysis())
-                elif kw == 'paramSweep':
-                    simulations.append(self.parse_parametric_analysis())
-                elif kw == 'plot':
-                    plots.append(self.parse_plot_command())
-                else:
-                    raise ParserError(f"Unknown analysis keyword: '{kw}'", self.current)
-            else:
-                raise ParserError(f"Expected analysis command, got '{self.current.value}'", self.current)
-
-        self.consume(TokenType.SYMBOL, '}')
-        if self.current.type == TokenType.SYMBOL and self.current.value == ';':
-            self.consume(TokenType.SYMBOL, ';')
+        self.consume(TokenType.LBRACE)
         
+        simulations: List[SimulationNode] = []
+        plots: List[Any] = []
+        
+        while self.current.type != TokenType.RBRACE:
+            kw = self.current.value.lower()
+            if kw == "dc":
+                simulations.append(self.parse_dc_analysis())
+            elif kw == "ac":
+                simulations.append(self.parse_ac_analysis())
+            elif kw == "transient":
+                simulations.append(self.parse_transient_analysis())
+            elif kw == "noise":
+                simulations.append(self.parse_noise_analysis())
+            elif kw == "param":
+                simulations.append(self.parse_parametric_analysis())
+            else:
+                raise ParserError(f"Unknown analysis keyword: '{kw}'", self.current)
+        
+        self.consume(TokenType.RBRACE)
         return self.create_node(AnalysisBlock, name=name, simulations=simulations, plots=plots)
 
     def parse_dc_analysis(self) -> DCAnalysis:

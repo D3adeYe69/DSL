@@ -1,5 +1,9 @@
-from typing import Dict, Set, List
-from ast_nodes import *
+from typing import Dict, Set, List, Union
+from ast_nodes import (
+    Program, ComponentDeclaration, Connection, SimulationNode,
+    DCAnalysis, ACAnalysis, TransientAnalysis, NoiseAnalysis,
+    MonteCarloAnalysis, ParametricAnalysis, AnalysisBlock
+)
 
 class SemanticError(Exception):
     pass
@@ -7,7 +11,7 @@ class SemanticError(Exception):
 class SemanticAnalyzer:
     def __init__(self, program: Program):
         self.program = program
-        self.components: Dict[str, Component] = {}
+        self.components: Dict[str, ComponentDeclaration] = {}
         self.valid_units = {
             'V': ['VoltageSource'],
             'A': ['CurrentSource'],
@@ -21,7 +25,7 @@ class SemanticAnalyzer:
     def analyze(self):
         # First pass: collect all component declarations
         for stmt in self.program.statements:
-            if isinstance(stmt, Component):
+            if isinstance(stmt, ComponentDeclaration):
                 self._check_component(stmt)
                 if stmt.name in self.components:
                     raise SemanticError(f"Component '{stmt.name}' is already defined")
@@ -32,14 +36,14 @@ class SemanticAnalyzer:
         for stmt in self.program.statements:
             if isinstance(stmt, Connection):
                 self._check_connection(stmt)
-            elif isinstance(stmt, Simulation):
+            elif isinstance(stmt, (SimulationNode, AnalysisBlock)):
                 has_simulation = True
                 self._check_simulation(stmt)
 
         if not has_simulation:
             raise SemanticError("Circuit must include a simulation command")
 
-    def _check_component(self, component: Component):
+    def _check_component(self, component: ComponentDeclaration):
         # Check component value
         if component.value <= 0:
             raise SemanticError(f"Component value must be positive: {component.name}")
@@ -64,12 +68,17 @@ class SemanticAnalyzer:
                 if endpoint.terminal not in ['positive', 'negative']:
                     raise SemanticError(f"Invalid terminal '{endpoint.terminal}' for component {endpoint.component}")
 
-    def _check_simulation(self, simulation: Simulation):
+    def _check_simulation(self, simulation: Union[SimulationNode, AnalysisBlock]):
+        if isinstance(simulation, AnalysisBlock):
+            for sim in simulation.simulations:
+                self._check_simulation(sim)
+            return
+
         if simulation.type not in self.valid_simulation_types:
             raise SemanticError(f"Invalid simulation type: {simulation.type}")
 
         # Check simulation parameters if present
-        if simulation.parameters:
+        if hasattr(simulation, 'parameters') and simulation.parameters:
             for param in simulation.parameters:
                 if not isinstance(param.value, (int, float)) or param.value <= 0:
                     raise SemanticError(f"Invalid simulation parameter value: {param.name}")

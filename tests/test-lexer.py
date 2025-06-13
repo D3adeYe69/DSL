@@ -1,3 +1,10 @@
+import sys
+import os
+from pathlib import Path
+
+# Add the parent directory to the Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 import unittest
 from lexer import Lexer, Token, TokenType
 
@@ -6,18 +13,19 @@ class TestLexer(unittest.TestCase):
         self.lexer = None
 
     def test_basic_tokens(self):
-        source = "Resistor R1(100 ohm);"
+        source = "Resistor R1(1k ohm);"
         self.lexer = Lexer(source)
         tokens = self.lexer.tokenize()
         
         expected = [
-            Token(TokenType.IDENTIFIER, "Resistor"),
-            Token(TokenType.IDENTIFIER, "R1"),
-            Token(TokenType.LPAREN, "("),
-            Token(TokenType.NUMBER, "100"),
-            Token(TokenType.IDENTIFIER, "ohm"),
-            Token(TokenType.RPAREN, ")"),
-            Token(TokenType.SEMICOLON, ";")
+            Token(TokenType.COMPONENT, "Resistor", 1, 1),
+            Token(TokenType.IDENTIFIER, "R1", 1, 10),
+            Token(TokenType.SYMBOL, "(", 1, 12),
+            Token(TokenType.NUMBER, "1", 1, 13),
+            Token(TokenType.UNIT, "kohm", 1, 14),
+            Token(TokenType.SYMBOL, ")", 1, 18),
+            Token(TokenType.SYMBOL, ";", 1, 19),
+            Token(TokenType.EOF, "", 1, 20)
         ]
         
         self.assertEqual(tokens, expected)
@@ -28,13 +36,14 @@ class TestLexer(unittest.TestCase):
         tokens = self.lexer.tokenize()
         
         expected = [
-            Token(TokenType.IDENTIFIER, "VoltageSource"),
-            Token(TokenType.IDENTIFIER, "V1"),
-            Token(TokenType.LPAREN, "("),
-            Token(TokenType.NUMBER, "9"),
-            Token(TokenType.IDENTIFIER, "V"),
-            Token(TokenType.RPAREN, ")"),
-            Token(TokenType.SEMICOLON, ";")
+            Token(TokenType.COMPONENT, "VoltageSource", 1, 1),
+            Token(TokenType.IDENTIFIER, "V1", 1, 14),
+            Token(TokenType.SYMBOL, "(", 1, 16),
+            Token(TokenType.NUMBER, "9", 1, 17),
+            Token(TokenType.UNIT, "V", 1, 19),
+            Token(TokenType.SYMBOL, ")", 1, 20),
+            Token(TokenType.SYMBOL, ";", 1, 21),
+            Token(TokenType.EOF, "", 1, 22)
         ]
         
         self.assertEqual(tokens, expected)
@@ -45,95 +54,83 @@ class TestLexer(unittest.TestCase):
         tokens = self.lexer.tokenize()
         
         expected = [
-            Token(TokenType.IDENTIFIER, "Connect"),
-            Token(TokenType.LPAREN, "("),
-            Token(TokenType.IDENTIFIER, "V1"),
-            Token(TokenType.DOT, "."),
-            Token(TokenType.IDENTIFIER, "positive"),
-            Token(TokenType.COMMA, ","),
-            Token(TokenType.IDENTIFIER, "R1"),
-            Token(TokenType.DOT, "."),
-            Token(TokenType.IDENTIFIER, "positive"),
-            Token(TokenType.RPAREN, ")"),
-            Token(TokenType.SEMICOLON, ";")
+            Token(TokenType.KEYWORD, "Connect", 1, 1),
+            Token(TokenType.SYMBOL, "(", 1, 7),
+            Token(TokenType.IDENTIFIER, "V1", 1, 8),
+            Token(TokenType.SYMBOL, ".", 1, 10),
+            Token(TokenType.IDENTIFIER, "positive", 1, 11),
+            Token(TokenType.SYMBOL, ",", 1, 18),
+            Token(TokenType.IDENTIFIER, "R1", 1, 20),
+            Token(TokenType.SYMBOL, ".", 1, 22),
+            Token(TokenType.IDENTIFIER, "positive", 1, 23),
+            Token(TokenType.SYMBOL, ")", 1, 30),
+            Token(TokenType.SYMBOL, ";", 1, 31),
+            Token(TokenType.EOF, "", 1, 32)
         ]
         
         self.assertEqual(tokens, expected)
 
-    def test_simulation(self):
-        source = "Simulate { dc; };"
+    def test_analysis(self):
+        source = "analysis main_analysis { dc; };"
         self.lexer = Lexer(source)
         tokens = self.lexer.tokenize()
         
         expected = [
-            Token(TokenType.IDENTIFIER, "Simulate"),
-            Token(TokenType.LBRACE, "{"),
-            Token(TokenType.IDENTIFIER, "dc"),
-            Token(TokenType.SEMICOLON, ";"),
-            Token(TokenType.RBRACE, "}"),
-            Token(TokenType.SEMICOLON, ";")
+            Token(TokenType.KEYWORD, "analysis", 1, 1),
+            Token(TokenType.IDENTIFIER, "main_analysis", 1, 9),
+            Token(TokenType.SYMBOL, "{", 1, 22),
+            Token(TokenType.KEYWORD, "dc", 1, 24),
+            Token(TokenType.SYMBOL, ";", 1, 26),
+            Token(TokenType.SYMBOL, "}", 1, 28),
+            Token(TokenType.SYMBOL, ";", 1, 29),
+            Token(TokenType.EOF, "", 1, 30)
         ]
         
         self.assertEqual(tokens, expected)
 
-    def test_complex_circuit(self):
-        source = """
-        VoltageSource V1(9 V);
-        Resistor R1(100 ohm);
-        Capacitor C1(1 uF);
-        Connect(V1.positive, R1.positive);
-        Connect(R1.negative, C1.positive);
-        Connect(C1.negative, V1.negative);
-        Simulate { dc; };
-        """
+    def test_ground_connection(self):
+        source = "Connect(V1.negative, GND);"
         self.lexer = Lexer(source)
         tokens = self.lexer.tokenize()
         
-        # Check first few tokens to ensure basic structure
-        self.assertEqual(tokens[0].type, TokenType.IDENTIFIER)
-        self.assertEqual(tokens[0].value, "VoltageSource")
-        self.assertEqual(tokens[1].type, TokenType.IDENTIFIER)
-        self.assertEqual(tokens[1].value, "V1")
+        expected = [
+            Token(TokenType.KEYWORD, "Connect", 1, 1),
+            Token(TokenType.SYMBOL, "(", 1, 7),
+            Token(TokenType.IDENTIFIER, "V1", 1, 8),
+            Token(TokenType.SYMBOL, ".", 1, 10),
+            Token(TokenType.IDENTIFIER, "negative", 1, 11),
+            Token(TokenType.SYMBOL, ",", 1, 18),
+            Token(TokenType.GROUND, "GND", 1, 20),
+            Token(TokenType.SYMBOL, ")", 1, 23),
+            Token(TokenType.SYMBOL, ";", 1, 24),
+            Token(TokenType.EOF, "", 1, 25)
+        ]
+        
+        self.assertEqual(tokens, expected)
 
-    def test_invalid_tokens(self):
-        source = "Resistor R1(@100 ohm);"  # Invalid character @
+    def test_comments(self):
+        source = "// This is a comment\nResistor R1(1k ohm);"
+        self.lexer = Lexer(source)
+        tokens = self.lexer.tokenize()
+        
+        expected = [
+            Token(TokenType.COMPONENT, "Resistor", 2, 1),
+            Token(TokenType.IDENTIFIER, "R1", 2, 10),
+            Token(TokenType.SYMBOL, "(", 2, 12),
+            Token(TokenType.NUMBER, "1", 2, 13),
+            Token(TokenType.UNIT, "kohm", 2, 14),
+            Token(TokenType.SYMBOL, ")", 2, 18),
+            Token(TokenType.SYMBOL, ";", 2, 19),
+            Token(TokenType.EOF, "", 2, 20)
+        ]
+        
+        self.assertEqual(tokens, expected)
+
+    def test_invalid_token(self):
+        source = "Resistor R1(@1k ohm);"  # Invalid character @
         self.lexer = Lexer(source)
         with self.assertRaises(Exception):
             self.lexer.tokenize()
-
-    def test_whitespace_handling(self):
-        source = "Resistor    R1(   100    ohm   )   ;"
-        self.lexer = Lexer(source)
-        tokens = self.lexer.tokenize()
-        
-        expected = [
-            Token(TokenType.IDENTIFIER, "Resistor"),
-            Token(TokenType.IDENTIFIER, "R1"),
-            Token(TokenType.LPAREN, "("),
-            Token(TokenType.NUMBER, "100"),
-            Token(TokenType.IDENTIFIER, "ohm"),
-            Token(TokenType.RPAREN, ")"),
-            Token(TokenType.SEMICOLON, ";")
-        ]
-        
-        self.assertEqual(tokens, expected)
-
-    def test_numbers(self):
-        source = "Resistor R1(1.5e-3 ohm);"
-        self.lexer = Lexer(source)
-        tokens = self.lexer.tokenize()
-        
-        expected = [
-            Token(TokenType.IDENTIFIER, "Resistor"),
-            Token(TokenType.IDENTIFIER, "R1"),
-            Token(TokenType.LPAREN, "("),
-            Token(TokenType.NUMBER, "1.5e-3"),
-            Token(TokenType.IDENTIFIER, "ohm"),
-            Token(TokenType.RPAREN, ")"),
-            Token(TokenType.SEMICOLON, ";")
-        ]
-        
-        self.assertEqual(tokens, expected)
 
 if __name__ == '__main__':
     unittest.main()

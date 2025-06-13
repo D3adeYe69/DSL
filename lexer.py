@@ -46,7 +46,7 @@ TOKEN_SPECIFICATION = [
     ('UNIT', r'\b(?:[munpfakMGTPE])?(?:Ohm|ohm|F|H|V|A|Hz|S|W|C|T|N|lx|Bq|Gy|Sv|kat|m|g|s|K|mol|cd)\b'),
     
     # Numbers with scientific notation and units
-    ('NUMBER', r'\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?(?:[munpfakMGTPE])?(?:[A-Za-z]+)?'),
+    ('NUMBER', r'\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?'),
     
     # String literals (both single and double quotes)
     ('STRING', r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\''),
@@ -97,11 +97,14 @@ class Lexer:
     def __init__(self, code: str, filename: str = "<input>"):
         self.code = code
         self.filename = filename
+        self.position = 0
+        self.line = 1
+        self.column = 1
+        self.tokens = []
     
     def tokenize(self) -> List[Token]:
+        """Tokenize the input code into a list of tokens"""
         tokens: List[Token] = []
-        line = 1
-        col = 1
         pos = 0
         
         for mo in _token_re.finditer(self.code):
@@ -113,10 +116,10 @@ class Lexer:
             segment = self.code[pos:start]
             newlines = segment.count('\n')
             if newlines > 0:
-                line += newlines
-                col = start - segment.rfind('\n')
+                self.line += newlines
+                self.column = start - segment.rfind('\n')
             else:
-                col += len(segment)
+                self.column = start - pos + 1
             
             # Skip whitespace and comments
             if kind in ('SKIP', 'COMMENT_SINGLE', 'COMMENT_BLOCK'):
@@ -125,56 +128,36 @@ class Lexer:
             
             # Handle unrecognized tokens
             if kind == 'MISMATCH':
-                raise LexerError(f"Unexpected character {value!r}", line, col)
+                raise LexerError(f"Unexpected character {value!r}", self.line, self.column)
             
             # Create token
             try:
                 token_type = TokenType[kind]
             except KeyError:
-                raise LexerError(f"Unknown token type {kind}", line, col)
+                raise LexerError(f"Unknown token type {kind}", self.line, self.column)
             
             # Post-process certain tokens
             if kind == 'NUMBER':
-                # Separate number from unit if present
-                token = self._process_number_token(token_type, value, line, col)
-                if isinstance(token, list):
-                    tokens.extend(token)
-                else:
-                    tokens.append(token)
+                # Process number token
+                tokens.append(Token(token_type, value, self.line, self.column))
+                
+                # Look ahead for unit
+                next_pos = mo.end()
+                if next_pos < len(self.code):
+                    next_match = _token_re.match(self.code, next_pos)
+                    if next_match and next_match.lastgroup == 'UNIT':
+                        unit_value = next_match.group()
+                        tokens.append(Token(TokenType.UNIT, unit_value, self.line, self.column + len(value)))
+                        pos = next_match.end()
+                        continue
             else:
-                tokens.append(Token(token_type, value, line, col))
+                tokens.append(Token(token_type, value, self.line, self.column))
             
             pos = mo.end()
-            col += len(value)
         
         # Add EOF token
-        tokens.append(Token(TokenType.EOF, '', line, col))
+        tokens.append(Token(TokenType.EOF, '', self.line, self.column))
         return tokens
-    
-    def _process_number_token(self, token_type: TokenType, value: str, line: int, col: int) -> List[Token]:
-        """Process number tokens that may have embedded units"""
-        # Try to separate number from unit
-        number_pattern = r'^(\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)([munpfakMGTPE])?([A-Za-z]+)?$'
-        match = re.match(number_pattern, value)
-        
-        if match:
-            number_part, prefix, unit_part = match.groups()
-            tokens = [Token(TokenType.NUMBER, number_part, line, col)]
-            
-            if prefix and unit_part:
-                # Has both prefix and unit
-                tokens.append(Token(TokenType.UNIT, prefix + unit_part, line, col + len(number_part)))
-            elif unit_part:
-                # Has unit without prefix
-                tokens.append(Token(TokenType.UNIT, unit_part, line, col + len(number_part)))
-            elif prefix:
-                # Has prefix without unit (unusual, treat as identifier)
-                tokens.append(Token(TokenType.IDENTIFIER, prefix, line, col + len(number_part)))
-            
-            return tokens
-        else:
-            # Fallback to original token
-            return [Token(token_type, value, line, col)]
 
 # Utility functions for working with tokens
 def is_component_type(token: Token) -> bool:
@@ -198,36 +181,31 @@ class UnitParser:
     """Helper class for parsing and validating units"""
     
     PREFIXES = {
-        'E': 1e18, 'P': 1e15, 'T': 1e12, 'G': 1e9, 'M': 1e6, 'k': 1e3,
-        'm': 1e-3, 'u': 1e-6, 'n': 1e-9, 'p': 1e-12, 'f': 1e-15, 'a': 1e-18
+        'm': 1e-3, 'u': 1e-6, 'n': 1e-9, 'p': 1e-12, 'f': 1e-15, 'a': 1e-18,
+        'k': 1e3, 'M': 1e6, 'G': 1e9, 'T': 1e12, 'P': 1e15, 'E': 1e18
     }
     
     BASE_UNITS = {
-        # Electrical
-        'V': 'voltage', 'A': 'current', 'Ohm': 'resistance', 'ohm': 'resistance',
-        'F': 'capacitance', 'H': 'inductance', 'S': 'conductance', 'W': 'power',
-        'Hz': 'frequency', 'C': 'charge',
-        # Physical
-        'm': 'length', 'g': 'mass', 's': 'time', 'K': 'temperature',
-        'mol': 'amount', 'cd': 'luminosity'
+        'ohm': 'Ω', 'F': 'F', 'H': 'H', 'V': 'V', 'A': 'A', 'Hz': 'Hz',
+        'S': 'S', 'W': 'W', 'C': 'C', 'T': 'T', 'N': 'N', 'lx': 'lx',
+        'Bq': 'Bq', 'Gy': 'Gy', 'Sv': 'Sv', 'kat': 'kat', 'm': 'm',
+        'g': 'g', 's': 's', 'K': 'K', 'mol': 'mol', 'cd': 'cd'
     }
     
     @classmethod
     def parse_unit(cls, unit_str: str) -> tuple[float, str]:
-        """Parse unit string into multiplier and base unit"""
+        """Parse a unit string into a multiplier and base unit"""
         if not unit_str:
-            return 1.0, ""
-        
-        # Try to split prefix from base unit
-        for prefix, multiplier in cls.PREFIXES.items():
-            if unit_str.startswith(prefix):
-                base_unit = unit_str[len(prefix):]
-                if base_unit in cls.BASE_UNITS:
-                    return multiplier, cls.BASE_UNITS[base_unit]
-        
-        # No prefix found, check if it's a base unit
+            return 1.0, None
+            
+        # Check for prefix
+        prefix = unit_str[0] if unit_str[0] in cls.PREFIXES else None
+        if prefix:
+            unit_str = unit_str[1:]
+            
+        # Check for base unit
         if unit_str in cls.BASE_UNITS:
-            return 1.0, cls.BASE_UNITS[unit_str]
-        
-        # Unknown unit
-        return 1.0, unit_str
+            multiplier = cls.PREFIXES.get(prefix, 1.0)
+            return multiplier, unit_str
+            
+        return 1.0, None
