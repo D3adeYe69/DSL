@@ -91,6 +91,11 @@ class Parser:
             break
         self.consume(TokenType.SYMBOL, ')')
         self.consume(TokenType.SYMBOL, ';')
+        if len(endpoints) != 2:
+            raise SyntaxError(
+                f"Connect statement must have exactly 2 endpoints, got {len(endpoints)} "
+                f"at line {self.current.line}, column {self.current.column}"
+            )
         return Connection(endpoints)
 
     def parse_simulation(self) -> SimulationBlock:

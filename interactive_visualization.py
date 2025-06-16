@@ -5,6 +5,7 @@ from lexer import Lexer
 from parser import Parser
 from ast_nodes import Program, ComponentDeclaration, Connection, ComponentTerminal, Subcircuit
 import os
+from interpreter import Interpreter
 
 app = Flask(__name__)
 
@@ -105,39 +106,47 @@ def index():
 @app.route('/parse-dsl', methods=['POST'])
 def parse_dsl():
     code = request.json.get('code', '')
-    tokens = Lexer(code).tokenize()
-    program = Parser(tokens).parse()
-    visualizer = InteractiveVisualizer()
-    # Map subcircuit name to Subcircuit object
-    subckt_defs = {sub.name: sub for sub in program.subcircuits}
-    # Add subcircuit instances and regular components
-    for comp in program.components:
-        if comp.type in subckt_defs:
-            pins = get_subcircuit_pins(subckt_defs[comp.type])
-            visualizer.add_subcircuit_instance(comp.name, comp.type, pins)
-        else:
-            visualizer.add_component(comp)
-    # Add connections
-    for conn in program.connections:
-        endpoints = conn.endpoints
-        if len(endpoints) == 2:
-            ep1, ep2 = endpoints
-            # If endpoint is subcircuit pin, connect to subcircuit instance and pin
-            def parse_ep(ep):
-                if isinstance(ep, ComponentTerminal):
-                    # If hierarchical (e.g., D1.input), treat as (D1, input)
-                    if '.' in ep.component:
-                        parts = ep.component.split('.')
-                        return parts[0], parts[-1]  # (instance, pin)
+    try:
+        tokens = Lexer(code).tokenize()
+        program = Parser(tokens).parse()
+        visualizer = InteractiveVisualizer()
+        # Map subcircuit name to Subcircuit object
+        subckt_defs = {sub.name: sub for sub in program.subcircuits}
+        # Add subcircuit instances and regular components
+        for comp in program.components:
+            if comp.type in subckt_defs:
+                pins = get_subcircuit_pins(subckt_defs[comp.type])
+                visualizer.add_subcircuit_instance(comp.name, comp.type, pins)
+            else:
+                visualizer.add_component(comp)
+        # Add connections
+        for conn in program.connections:
+            endpoints = conn.endpoints
+            if len(endpoints) == 2:
+                ep1, ep2 = endpoints
+                # If endpoint is subcircuit pin, connect to subcircuit instance and pin
+                def parse_ep(ep):
+                    if isinstance(ep, ComponentTerminal):
+                        # If hierarchical (e.g., D1.input), treat as (D1, input)
+                        if '.' in ep.component:
+                            parts = ep.component.split('.')
+                            return parts[0], parts[-1]  # (instance, pin)
+                        else:
+                            return ep.component, ep.terminal
                     else:
-                        return ep.component, ep.terminal
-                else:
-                    return ep, 'node'
-            from_comp, from_term = parse_ep(ep1)
-            to_comp, to_term = parse_ep(ep2)
-            visualizer.add_connection(from_comp, from_term, to_comp, to_term)
-    visualizer.generate_layout()
-    return jsonify(visualizer.to_json())
+                        return ep, 'node'
+                from_comp, from_term = parse_ep(ep1)
+                to_comp, to_term = parse_ep(ep2)
+                visualizer.add_connection(from_comp, from_term, to_comp, to_term)
+        visualizer.generate_layout()
+        return jsonify(visualizer.to_json())
+    except Exception as e:
+        # Try to extract line/column info if present in the error message
+        import traceback
+        tb = traceback.format_exc()
+        err_msg = str(e)
+        # If the error is a SyntaxError with line/column, keep that
+        return jsonify({'error': err_msg}), 200
 
 @app.route('/generate-dsl', methods=['POST'])
 def generate_dsl():
@@ -154,6 +163,81 @@ def generate_dsl():
             lines.append(f"Connect({conn['from']}.{conn['from_term']}, {conn['to']}.{conn['to_term']});")
     code = '\n'.join(lines)
     return jsonify({'code': code})
+
+@app.route('/simulate-dsl', methods=['POST'])
+def simulate_dsl():
+    code = request.json.get('code', '')
+    try:
+        tokens = Lexer(code).tokenize()
+        program = Parser(tokens).parse()
+        # Check for Simulate block
+        if not program.simulations or len(program.simulations) == 0:
+            return jsonify({'error': 'No Simulate block found. Please add Simulate { dc; };'}), 200
+
+        # Run simulation logic: generate netlist
+        interp = Interpreter(program)
+        netlist_lines = interp.generate_netlist()
+
+        # --- Basic DC Operating Point Analysis (Ohm's Law) ---
+        output_message = 'Simulation Netlist:\n' + '\n'.join(netlist_lines)
+
+        # Check for simple series circuit (one VoltageSource, one Resistor)
+        voltage_sources = [comp for comp in program.components if comp.type == 'VoltageSource']
+        resistors = [comp for comp in program.components if comp.type == 'Resistor']
+
+        if len(voltage_sources) == 1 and len(resistors) == 1:
+            v_source = voltage_sources[0]
+            resistor = resistors[0]
+
+            # Simple check for a single loop connection
+            # This assumes a series connection and ground is handled implicitly or by parser
+            is_simple_series = False
+            if len(program.connections) >= 1:
+                # A basic heuristic: check if V and R are connected to each other and optionally ground
+                # More robust check would involve graph traversal
+                v_connected_to_r = False
+                for conn in program.connections:
+                    # Check if V and R are connected to each other
+                    if (isinstance(conn.endpoints[0], ComponentTerminal) and conn.endpoints[0].component == v_source.name and
+                        isinstance(conn.endpoints[1], ComponentTerminal) and conn.endpoints[1].component == resistor.name) or\
+                       (isinstance(conn.endpoints[0], ComponentTerminal) and conn.endpoints[0].component == resistor.name and
+                        isinstance(conn.endpoints[1], ComponentTerminal) and conn.endpoints[1].component == v_source.name):
+                        v_connected_to_r = True
+                        break
+
+                if v_connected_to_r:
+                    is_simple_series = True
+
+            if is_simple_series:
+                V = v_source.value
+                R = resistor.value
+
+                # Convert kOhm to Ohm if necessary
+                if resistor.unit == 'kOhm':
+                    R *= 1000
+
+                if R != 0:
+                    I = V / R
+                    output_message += f'\n\n--- DC Operating Point Analysis (Simple Circuit) ---'
+                    output_message += f'\nVoltage Source ({v_source.name}): {V} {v_source.unit}'
+                    output_message += f'\nResistor ({resistor.name}): {resistor.value} {resistor.unit}'
+                    output_message += f'\nCalculated Current (I) = {I:.3f} A'
+                else:
+                    output_message += '\n\n--- DC Operating Point Analysis ---'
+                    output_message += '\nCannot calculate current: Resistor value is zero.'
+            else:
+                output_message += '\n\n--- DC Operating Point Analysis ---'
+                output_message += '\nComplex circuit detected. A full SPICE solver is required for detailed analysis.'
+        else:
+            output_message += '\n\n--- DC Operating Point Analysis ---'
+            output_message += '\nOnly simple series circuits (one voltage source and one resistor) are supported for basic analysis.'
+
+        return jsonify({'output': output_message})
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        err_msg = str(e)
+        return jsonify({'error': err_msg}), 200
 
 if __name__ == '__main__':
     app.run(debug=True) 

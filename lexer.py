@@ -31,7 +31,7 @@ TOKEN_SPECIFICATION = [
     ('GROUND',     r'\bground\b'),
     ('NODE',       r'\bnode\b'),
     ('KEYWORD',    r'\b(?:dc|transient|ac)\b'),
-    ('UNIT',       r'\b(?:ohm|uF|mH|V|A|mA|kOhm)\b'),
+    ('UNIT',       r'\b(?:ohm|uF|mH|H|V|A|mA|kOhm)\b'),
     ('NUMBER',     r'\d+(?:\.\d+)?(?:[eE][+-]?\d+)?'),
     ('IDENTIFIER', r'[A-Za-z_][A-Za-z0-9_]*'),
     ('OPERATOR',   r'[+\-*/=]'),

@@ -4,6 +4,184 @@
     <title>Interactive Circuit Visualization</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
+        body {
+            font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+            background: #f6f8fa;
+            margin: 0;
+            padding: 0;
+        }
+        .toolbar {
+            margin-bottom: 18px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            padding: 12px 18px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            width: fit-content;
+        }
+        .toolbar button {
+            background: #e3eafc;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 18px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .toolbar button:hover {
+            background: #c7d7f7;
+            transform: translateY(-2px) scale(1.04);
+        }
+        .toolbar button:active {
+            background: #b0c4ee;
+        }
+        #add-component[style*="background-color: #90caf9"] {
+            background: #90caf9 !important;
+            color: #222;
+        }
+        #add-connection[style*="background-color: #ffeb3b"] {
+            background: #fff59d !important;
+            color: #222;
+        }
+        #remove-mode[style*="background-color: #ff4444"] {
+            background: #ffb3b3 !important;
+            color: #222;
+        }
+        #code-btn, #render-btn {
+            font-weight: 500;
+        }
+        #code-editor {
+            width: 100%;
+            height: 120px;
+            font-family: 'Fira Mono', 'Consolas', monospace;
+            font-size: 15px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            border: 1px solid #cfd8dc;
+            background: #fafdff;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        #circuit-container {
+            border: 1px solid #cfd8dc;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 24px;
+        }
+        .component-details {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: none;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        /* Modal Styles */
+        #component-modal, #component-details-modal {
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 8px 32px rgba(60,60,120,0.18);
+            padding: 28px 32px 24px 32px;
+            min-width: 340px;
+        }
+        #component-modal h3, #component-details-modal h3 {
+            margin-top: 0;
+            font-size: 1.3em;
+            letter-spacing: 0.5px;
+        }
+        #component-modal h4, #component-details-modal h4 {
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        #component-modal .component-option {
+            background: #f6f8fa;
+            transition: background 0.2s, box-shadow 0.2s, transform 0.15s;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+        #component-modal .component-option:hover {
+            background: #e3eafc;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transform: scale(1.07);
+        }
+        #component-modal .component-option svg {
+            margin-bottom: 4px;
+        }
+        #component-modal .component-option div {
+            font-size: 1em;
+            font-weight: 500;
+        }
+        #component-details-modal input, #component-details-modal select {
+            width: 100%;
+            padding: 7px 8px;
+            margin: 5px 0 12px 0;
+            border-radius: 6px;
+            border: 1px solid #cfd8dc;
+            font-size: 1em;
+            background: #fafdff;
+        }
+        #component-details-modal button {
+            background: #90caf9;
+            color: #222;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 18px;
+            font-size: 15px;
+            cursor: pointer;
+            margin-right: 8px;
+            transition: background 0.2s, transform 0.1s;
+        }
+        #component-details-modal button:hover {
+            background: #64b5f6;
+            transform: scale(1.04);
+        }
+        #component-details-modal button:active {
+            background: #42a5f5;
+        }
+        /* Close/Back button in modals */
+        #component-modal button[onclick^="closeComponentModal"],
+        #component-details-modal button[onclick^="backToSelection"] {
+            background: #ff4444;
+            color: #fff;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            font-size: 1.2em;
+            position: absolute;
+            right: -14px;
+            top: -14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            padding: 0;
+            margin: 0;
+            z-index: 10;
+            transition: background 0.2s, transform 0.1s;
+        }
+        #component-modal button[onclick^="closeComponentModal"]:hover,
+        #component-details-modal button[onclick^="backToSelection"]:hover {
+            background: #d32f2f;
+            transform: scale(1.08);
+        }
+        /* Responsive grid for component selection */
+        #component-selection > div {
+            gap: 18px !important;
+        }
+        @media (max-width: 600px) {
+            #component-modal, #component-details-modal {
+                min-width: 90vw;
+                padding: 12px 6vw;
+            }
+            .toolbar {
+                flex-direction: column;
+                width: 100%;
+            }
+        }
         .component {
             cursor: move;
         }
@@ -36,10 +214,20 @@
         }
         #code-editor { width: 100%; height: 120px; font-family: monospace; font-size: 15px; margin-bottom: 8px; }
         #circuit-container { border: 1px solid #ccc; }
+        .highlight-error-line {
+            background: #ffe0e0 !important;
+        }
     </style>
 </head>
 <body>
-    <textarea id="code-editor">VoltageSource V2(5 V);
+    <div class="toolbar" style="margin-bottom: 0;">
+        <button id="render-btn">Render</button>
+        <button id="simulate-btn">Simulate</button>
+    </div>
+    <div style="display: flex; gap: 0; align-items: flex-start; width: 100%;">
+        <div style="flex: 1; min-width: 0; display: flex; align-items: stretch; position: relative;">
+            <div id="line-numbers" style="background: #f0f0f0; color: #888; text-align: right; padding: 10px 6px 10px 0; user-select: none; font-family: 'Fira Mono', 'Consolas', monospace; font-size: 15px; border-radius: 8px 0 0 8px; border-right: 1px solid #e0e0e0; position: absolute; left: 0; top: 0; bottom: 0; width: 32px; overflow: hidden;"></div>
+            <textarea id="code-editor" style="flex: 1; border-radius: 0 8px 8px 0; border-left: none; padding-left: 38px; resize: vertical; min-height: 120px;">VoltageSource V2(5 V);
 Resistor R2(100 ohm);
 Ammeter A1(10 A);
 Connect(V2.positive, A1.positive, node1);
@@ -47,15 +235,113 @@ Connect(A1.negative, R2.positive, node2);
 Connect(V2.negative, R2.negative, ground);
 Simulate { dc; };
 </textarea>
+        </div>
+        <div style="flex: 1; min-width: 0; padding-left: 18px;">
+            <div id="error-panel" style="background: #fff3f3; border: 1px solid #ffcdd2; border-radius: 8px; min-height: 120px; padding: 14px 18px; color: #b71c1c; font-family: 'Fira Mono', 'Consolas', monospace; font-size: 15px; white-space: pre-wrap; word-break: break-word;">
+                No errors.
+            </div>
+        </div>
+    </div>
+    <div id="simulation-output-panel" style="display:none; margin-top: 18px; background: #f6f8fa; border: 1px solid #b3e5fc; border-radius: 8px; min-height: 60px; padding: 14px 18px; color: #01579b; font-family: 'Fira Mono', 'Consolas', monospace; font-size: 15px; white-space: pre-wrap; word-break: break-word;">
+        <button id="copy-netlist-btn" style="float: right; margin-top: -10px; margin-right: -10px; background: #007bff; color: white; border: none; border-radius: 5px; padding: 5px 10px; cursor: pointer;">Copy Netlist</button>
+        <pre id="netlist-content" style="margin-top: 20px;">Simulation output will appear here.</pre>
+    </div>
     <div class="toolbar">
-        <button id="render-btn">Render</button>
         <button id="code-btn">Code</button>
+        <button id="export-png-btn">Export PNG</button>
+        <button id="export-code-btn">Export Code</button>
         <button id="add-component">Add Component</button>
         <button id="add-connection">Add Connection</button>
         <button id="remove-mode">Remove</button>
     </div>
     <div id="circuit-container"></div>
     <div id="component-details" class="component-details"></div>
+
+    <!-- Add Component Modal -->
+    <div id="component-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 1px solid #ccc; box-shadow: 0 0 10px rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: relative;">
+            <button onclick="closeComponentModal()" style="position: absolute; right: -10px; top: -10px; background: #ff4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-weight: bold;">×</button>
+            <h3>Add Component</h3>
+        </div>
+        <div id="component-selection" style="margin-bottom: 20px;">
+            <h4>Select Component Type:</h4>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 10px;">
+                <div class="component-option" data-type="Resistor" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; text-align: center;">
+                    <svg width="60" height="40" viewBox="-30 -20 60 40">
+                        <path d="M-30,0 L-20,10 L-10,-10 L0,10 L10,-10 L20,10 L30,0" stroke="black" fill="none"/>
+                    </svg>
+                    <div>Resistor</div>
+                </div>
+                <div class="component-option" data-type="VoltageSource" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; text-align: center;">
+                    <svg width="60" height="40" viewBox="-30 -20 60 40">
+                        <circle cx="0" cy="0" r="20" stroke="black" fill="none"/>
+                        <line x1="-10" y1="0" x2="10" y2="0" stroke="black"/>
+                        <line x1="0" y1="-10" x2="0" y2="10" stroke="black"/>
+                    </svg>
+                    <div>Voltage Source</div>
+                </div>
+                <div class="component-option" data-type="Capacitor" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; text-align: center;">
+                    <svg width="60" height="40" viewBox="-30 -20 60 40">
+                        <line x1="-20" y1="-15" x2="-20" y2="15" stroke="black"/>
+                        <line x1="20" y1="-15" x2="20" y2="15" stroke="black"/>
+                        <line x1="-20" y1="0" x2="20" y2="0" stroke="black" stroke-dasharray="2,2"/>
+                    </svg>
+                    <div>Capacitor</div>
+                </div>
+                <div class="component-option" data-type="Inductor" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; text-align: center;">
+                    <svg width="60" height="40" viewBox="-30 -20 60 40">
+                        <line x1="-20" y1="0" x2="20" y2="0" stroke="black"/>
+                        <ellipse cx="-15" cy="0" rx="5" ry="10" stroke="black" fill="none"/>
+                        <ellipse cx="-5" cy="0" rx="5" ry="10" stroke="black" fill="none"/>
+                        <ellipse cx="5" cy="0" rx="5" ry="10" stroke="black" fill="none"/>
+                        <ellipse cx="15" cy="0" rx="5" ry="10" stroke="black" fill="none"/>
+                    </svg>
+                    <div>Inductor</div>
+                </div>
+                <div class="component-option" data-type="CurrentSource" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; text-align: center;">
+                    <svg width="60" height="40" viewBox="-30 -20 60 40">
+                        <circle cx="0" cy="0" r="20" stroke="black" fill="none"/>
+                        <line x1="0" y1="-10" x2="0" y2="10" stroke="black"/>
+                        <polygon points="0,-15 5,-5 -5,-5" fill="black"/>
+                    </svg>
+                    <div>Current Source</div>
+                </div>
+                <div class="component-option" data-type="Ammeter" style="cursor: pointer; padding: 10px; border: 1px solid #ccc; border-radius: 5px; text-align: center;">
+                    <svg width="60" height="40" viewBox="-30 -20 60 40">
+                        <circle cx="0" cy="0" r="20" stroke="black" fill="none"/>
+                        <text x="0" y="5" text-anchor="middle" font-size="16">A</text>
+                    </svg>
+                    <div>Ammeter</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Component Details Modal -->
+    <div id="component-details-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 1px solid #ccc; box-shadow: 0 0 10px rgba(0,0,0,0.5); z-index: 1001;">
+        <div style="position: relative;">
+            <button onclick="backToSelection()" style="position: absolute; right: -10px; top: -10px; background: #ff4444; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-weight: bold;">×</button>
+            <h3>Component Details</h3>
+        </div>
+        <div id="component-details-form">
+            <input type="hidden" id="component-type">
+            <div>
+                <label>Name:</label>
+                <input type="text" id="component-name" placeholder="e.g., R1">
+            </div>
+            <div>
+                <label>Value:</label>
+                <input type="number" id="component-value" placeholder="e.g., 100">
+            </div>
+            <div>
+                <label>Unit:</label>
+                <select id="component-unit"></select>
+            </div>
+            <div style="margin-top: 10px;">
+                <button onclick="addComponent()">Add</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const width = 1200;
@@ -82,6 +368,7 @@ Simulate { dc; };
             componentPositions = {};
             nodePositions = {};
             subcircuitPositions = {};
+            d3.selectAll('.temp-connection').remove();
         }
 
         function renderCircuit(data) {
@@ -165,6 +452,13 @@ Simulate { dc; };
                         .attr('stroke', 'black')
                         .attr('fill', 'none');
                 }
+                // Add a line connecting the coils
+                g.append('line')
+                    .attr('x1', -20)
+                    .attr('y1', 0)
+                    .attr('x2', 20)
+                    .attr('y2', 0)
+                    .attr('stroke', 'black');
             }
             function drawCurrentSource(g) {
                 g.append('circle')
@@ -193,14 +487,58 @@ Simulate { dc; };
                     .attr('fill', 'transparent')
                     .attr('class', 'drag-hitbox');
 
-                g.append('circle')
-                    .attr('class', 'node-label')
-                    .attr('r', 18);
-
-                g.append('text')
-                    .attr('class', 'node-text')
-                    .attr('y', 4)
-                    .text(node);
+                if (node.toLowerCase() === 'ground') {
+                    // Draw ground symbol
+                    g.append('circle')
+                        .attr('r', 16)
+                        .attr('fill', '#fff')
+                        .attr('stroke', '#333')
+                        .attr('stroke-width', 2);
+                    // Ground SVG symbol
+                    g.append('line')
+                        .attr('x1', 0)
+                        .attr('y1', 8)
+                        .attr('x2', 0)
+                        .attr('y2', 18)
+                        .attr('stroke', '#333')
+                        .attr('stroke-width', 2);
+                    g.append('line')
+                        .attr('x1', -8)
+                        .attr('y1', 18)
+                        .attr('x2', 8)
+                        .attr('y2', 18)
+                        .attr('stroke', '#333')
+                        .attr('stroke-width', 2);
+                    g.append('line')
+                        .attr('x1', -5)
+                        .attr('y1', 21)
+                        .attr('x2', 5)
+                        .attr('y2', 21)
+                        .attr('stroke', '#333')
+                        .attr('stroke-width', 2);
+                    g.append('line')
+                        .attr('x1', -2)
+                        .attr('y1', 24)
+                        .attr('x2', 2)
+                        .attr('y2', 24)
+                        .attr('stroke', '#333')
+                        .attr('stroke-width', 2);
+                    g.append('text')
+                        .attr('class', 'node-text')
+                        .attr('y', -20)
+                        .attr('text-anchor', 'middle')
+                        .attr('font-size', 13)
+                        .attr('fill', '#333')
+                        .text('ground');
+                } else {
+                    g.append('circle')
+                        .attr('class', 'node-label')
+                        .attr('r', 18);
+                    g.append('text')
+                        .attr('class', 'node-text')
+                        .attr('y', 4)
+                        .text(node);
+                }
 
                 nodePositions[node] = {x, y};
 
@@ -303,8 +641,8 @@ Simulate { dc; };
                 }
 
                 // Draw terminal labels (+, - or terminal name)
-                const terminals = Object.entries(terminalOffsets[component.type] || {});
-                for (const [term, offset] of terminals) {
+                const terminalLabels = Object.entries(terminalOffsets[component.type] || {});
+                for (const [term, offset] of terminalLabels) {
                     g.append('text')
                         .attr('x', offset.x)
                         .attr('y', offset.y - 8)
@@ -327,16 +665,27 @@ Simulate { dc; };
 
                 g.on('mouseover', function() {
                     d3.select(this).select('.drag-hitbox').attr('fill', 'rgba(0,0,255,0.08)');
+                    showComponentDetails(component);
                 });
                 g.on('mouseout', function() {
                     d3.select(this).select('.drag-hitbox').attr('fill', 'transparent');
+                    d3.select('#component-details').style('display', 'none');
                 });
 
-                g.on('click', function(event, d) {
-                    showComponentDetails(component);
+                // Add click handlers to terminals
+                const terminalTypes = ['positive', 'negative'];
+                terminalTypes.forEach(term => {
+                    const offset = terminalOffsets[component.type][term];
+                    g.append('circle')
+                        .attr('class', 'terminal')
+                        .attr('r', 5)
+                        .attr('cx', offset.x)
+                        .attr('cy', offset.y)
+                        .attr('fill', '#666')
+                        .on('click', () => handleComponentClick(component.id, term));
                 });
             }
-            function drawConnection(connection) {
+            function drawConnection(connection, idx) {
                 // If endpoint is a subcircuit pin, draw to the pin position
                 function getEndpointPos(comp, term) {
                     // If comp is a subcircuit instance, use pin position
@@ -366,7 +715,8 @@ Simulate { dc; };
                     .attr('x1', p1.x)
                     .attr('y1', p1.y)
                     .attr('x2', p2.x)
-                    .attr('y2', p2.y);
+                    .attr('y2', p2.y)
+                    .attr('data-connection-idx', idx);
             }
             function showComponentDetails(component) {
                 const details = d3.select('#component-details');
@@ -381,8 +731,8 @@ Simulate { dc; };
             }
             function updateConnections() {
                 svg.selectAll('.connection').remove();
-                connectionsData.forEach(connection => {
-                    drawConnection(connection);
+                connectionsData.forEach((connection, idx) => {
+                    drawConnection(connection, idx);
                 });
             }
             function dragstarted(event) {
@@ -423,12 +773,14 @@ Simulate { dc; };
             });
             // Draw connections
             connectionsData = data.connections;
-            data.connections.forEach(connection => {
-                drawConnection(connection);
+            data.connections.forEach((connection, idx) => {
+                drawConnection(connection, idx);
             });
         }
 
-        document.getElementById('render-btn').onclick = function() {
+        // Visualize button logic
+        function visualizeCircuit() {
+            document.getElementById('simulation-output-panel').style.display = 'none';
             const code = document.getElementById('code-editor').value;
             fetch('/parse-dsl', {
                 method: 'POST',
@@ -437,12 +789,118 @@ Simulate { dc; };
             })
             .then(res => res.json())
             .then(data => {
-                circuitData = data;
-                renderCircuit(data);
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    circuitData = data;
+                    renderCircuit(data);
+                    showError(null);
+                }
+            })
+            .catch(err => {
+                showError('An unexpected error occurred while parsing.');
             });
-        };
+        }
+        document.getElementById('render-btn').onclick = visualizeCircuit;
 
-        document.getElementById('code-btn').onclick = function() {
+        // Simulate button logic
+        function simulateCircuit() {
+            const code = document.getElementById('code-editor').value;
+            document.getElementById('simulation-output-panel').style.display = 'none';
+            // Check for Simulate block
+            if (!/Simulate\s*\{[^}]*\}/i.test(code)) {
+                showError('Simulation block required for simulation. Please add Simulate { dc; };');
+                return;
+            }
+            fetch('/simulate-dsl', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    showError(null);
+                    document.getElementById('simulation-output-panel').style.display = 'block';
+                    document.getElementById('netlist-content').textContent = data.output || 'Simulation complete. (No output)';
+                }
+            })
+            .catch(err => {
+                showError('An unexpected error occurred while simulating.');
+            });
+        }
+        document.getElementById('simulate-btn').onclick = simulateCircuit;
+
+        // Copy Netlist button logic
+        document.getElementById('copy-netlist-btn').addEventListener('click', function() {
+            const netlistContent = document.getElementById('netlist-content').textContent;
+            navigator.clipboard.writeText(netlistContent).then(() => {
+                alert('Netlist copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy netlist: ', err);
+                alert('Failed to copy netlist.');
+            });
+        });
+
+        function showError(error) {
+            const panel = document.getElementById('error-panel');
+            let errorLine = null;
+            if (!error) {
+                panel.textContent = 'No errors.';
+                panel.style.color = '#388e3c';
+                panel.style.background = '#e8f5e9';
+                panel.style.border = '1px solid #a5d6a7';
+            } else {
+                panel.textContent = error;
+                panel.style.color = '#b71c1c';
+                panel.style.background = '#fff3f3';
+                panel.style.border = '1px solid #ffcdd2';
+                // Try to extract line and column number from error message
+                let match = error.match(/line (\d+), column (\d+)/);
+                let code = document.getElementById('code-editor').value;
+                let lines = code.split('\n');
+                if (match) {
+                    let reportedLine = parseInt(match[1], 10);
+                    let reportedCol = parseInt(match[2], 10);
+                    // Map column to actual line in code
+                    let charCount = 0;
+                    let foundLine = null;
+                    for (let i = 0; i < lines.length; i++) {
+                        charCount += lines[i].length + 1; // +1 for newline
+                        if (charCount >= reportedCol) {
+                            foundLine = i + 1;
+                            break;
+                        }
+                    }
+                    if (foundLine) {
+                        errorLine = foundLine;
+                    } else {
+                        errorLine = reportedLine;
+                    }
+                } else {
+                    // Fallback: Try to find the actual statement in the code
+                    match = error.match(/line (\d+)/);
+                    if (match) {
+                        // If error mentions Connect, try to find the first Connect line with too many endpoints
+                        if (/Connect/.test(error)) {
+                            for (let i = 0; i < lines.length; i++) {
+                                if (/^\s*Connect\s*\(/.test(lines[i]) && lines[i].split(',').length > 2) {
+                                    errorLine = i + 1;
+                                    break;
+                                }
+                            }
+                        }
+                        // Fallback to parser-reported line
+                        if (!errorLine) errorLine = parseInt(match[1], 10);
+                    }
+                }
+            }
+            updateLineNumbers(errorLine);
+        }
+
+        document.getElementById('code-btn').addEventListener('click', function() {
             fetch('/generate-dsl', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -452,12 +910,498 @@ Simulate { dc; };
             .then(data => {
                 document.getElementById('code-editor').value = data.code;
             });
-        };
+        });
 
         // On page load, render initial code
         window.onload = function() {
+            updateLineNumbers();
             document.getElementById('render-btn').click();
         };
+
+        // Add these new functions after the existing JavaScript code
+        let isConnectionMode = false;
+        let connectionStart = null;
+        let isRemoveMode = false;
+
+        // Initialize component options when the page loads
+        window.addEventListener('load', function() {
+            // Add click handlers for component options
+            document.querySelectorAll('.component-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    const type = this.getAttribute('data-type');
+                    showComponentDetails(type);
+                });
+
+                option.addEventListener('mouseover', function() {
+                    this.style.backgroundColor = '#f0f0f0';
+                    this.style.transform = 'scale(1.05)';
+                    this.style.transition = 'all 0.2s ease';
+                });
+
+                option.addEventListener('mouseout', function() {
+                    this.style.backgroundColor = '';
+                    this.style.transform = 'scale(1)';
+                });
+            });
+        });
+
+        function showComponentDetails(type) {
+            // Hide the component selection modal
+            document.getElementById('component-modal').style.display = 'none';
+            // Show the details modal
+            document.getElementById('component-details-modal').style.display = 'block';
+            // Set the component type
+            document.getElementById('component-type').value = type;
+            // Update unit options based on component type
+            updateUnitOptions();
+            // Set default name based on type
+            const defaultName = type === 'Ground' ? 'ground' : type.charAt(0) + '1';
+            document.getElementById('component-name').value = defaultName;
+            document.getElementById('component-name').focus();
+            // Show/hide value/unit fields for Ground
+            if (type === 'Ground') {
+                document.getElementById('component-value').parentElement.style.display = 'none';
+                document.getElementById('component-unit').parentElement.style.display = 'none';
+            } else {
+                document.getElementById('component-value').parentElement.style.display = '';
+                document.getElementById('component-unit').parentElement.style.display = '';
+            }
+        }
+
+        function backToSelection() {
+            // Hide the details modal
+            document.getElementById('component-details-modal').style.display = 'none';
+            
+            // Show the component selection modal
+            document.getElementById('component-modal').style.display = 'block';
+            
+            // Reset form
+            document.getElementById('component-name').value = '';
+            document.getElementById('component-value').value = '';
+        }
+
+        function closeComponentModal() {
+            // Hide both modals
+            document.getElementById('component-modal').style.display = 'none';
+            document.getElementById('component-details-modal').style.display = 'none';
+            
+            // Reset form
+            document.getElementById('component-name').value = '';
+            document.getElementById('component-value').value = '';
+        }
+
+        function showComponentModal() {
+            document.getElementById('component-modal').style.display = 'block';
+            document.getElementById('component-details-modal').style.display = 'none';
+        }
+
+        function updateUnitOptions() {
+            const type = document.getElementById('component-type').value;
+            const unitSelect = document.getElementById('component-unit');
+            unitSelect.innerHTML = ''; // Clear existing options
+
+            let units = [];
+            switch(type) {
+                case 'Resistor':
+                    units = ['ohm', 'kOhm'];
+                    break;
+                case 'VoltageSource':
+                    units = ['V'];
+                    break;
+                case 'CurrentSource':
+                case 'Ammeter':
+                    units = ['A', 'mA'];
+                    break;
+                case 'Capacitor':
+                    units = ['uF'];
+                    break;
+                case 'Inductor':
+                    units = ['mH'];
+                    break;
+            }
+
+            units.forEach(unit => {
+                const option = document.createElement('option');
+                option.value = unit;
+                option.text = unit;
+                unitSelect.appendChild(option);
+            });
+        }
+
+        function addComponent() {
+            const type = document.getElementById('component-type').value;
+            const name = document.getElementById('component-name').value.trim();
+            const value = document.getElementById('component-value').value;
+            const unit = document.getElementById('component-unit').value;
+
+            if (!name) {
+                alert('Please enter a component name');
+                return;
+            }
+
+            // Duplicate name checker
+            const code = document.getElementById('code-editor');
+            const lines = code.value.split('\n');
+            const nameRegex = new RegExp('^\\w+\\s+' + name + '\\b');
+            for (let line of lines) {
+                if (nameRegex.test(line.trim())) {
+                    alert('There is already a component named like this.');
+                    return;
+                }
+            }
+
+            if (type !== 'Ground' && !value) {
+                alert('Please enter a component value');
+                return;
+            }
+
+            let newLine = '';
+            if (type === 'Ground') {
+                newLine = `Ground ${name};`;
+            } else {
+                newLine = `${type} ${name}(${value} ${unit});`;
+            }
+            
+            // Add the new component to the code
+            if (code.value.trim() === '') {
+                code.value = newLine;
+            } else {
+                // Check if the last line ends with a semicolon
+                const lastChar = code.value.trim().slice(-1);
+                if (lastChar === ';') {
+                    code.value = code.value + '\n' + newLine;
+                } else {
+                    code.value = code.value + ';\n' + newLine;
+                }
+            }
+
+            // Clear the form
+            document.getElementById('component-name').value = '';
+            document.getElementById('component-value').value = '';
+            document.getElementById('component-type').value = '';
+            document.getElementById('component-unit').innerHTML = '';
+            closeComponentModal();
+            document.getElementById('render-btn').click();
+        }
+
+        document.getElementById('add-component').addEventListener('click', showComponentModal);
+
+        document.getElementById('add-connection').addEventListener('click', function() {
+            isConnectionMode = !isConnectionMode;
+            this.style.backgroundColor = isConnectionMode ? '#ffeb3b' : '';
+            if (!isConnectionMode) {
+                connectionStart = null;
+            }
+            updateConnectionModeVisuals();
+        });
+
+        function handleComponentClick(component, terminal) {
+            if (!isConnectionMode) return;
+
+            if (!connectionStart) {
+                connectionStart = { component, terminal };
+                // Highlight the selected terminal
+                d3.select(`#${component}`).select(`.terminal[data-terminal="${terminal}"]`)
+                    .attr('fill', '#ffeb3b')
+                    .attr('stroke', '#ff0000')
+                    .attr('stroke-width', '2');
+                
+                // Add a temporary line to show potential connection
+                const svg = d3.select('#circuit-container svg');
+                svg.append('line')
+                    .attr('class', 'temp-connection')
+                    .attr('stroke', '#ff0000')
+                    .attr('stroke-width', '2')
+                    .attr('stroke-dasharray', '5,5');
+            } else {
+                // Don't allow connecting to the same component
+                if (connectionStart.component === component) {
+                    alert("Cannot connect a component to itself!");
+                    return;
+                }
+                
+                const code = document.getElementById('code-editor');
+                const newLine = `Connect(${connectionStart.component}.${connectionStart.terminal}, ${component}.${terminal});`;
+                code.value = code.value + '\n' + newLine;
+                document.getElementById('render-btn').click();
+                isConnectionMode = false;
+                document.getElementById('add-connection').style.backgroundColor = '';
+                connectionStart = null;
+            }
+        }
+
+        // Add mouse move handler for temporary connection line
+        d3.select('#circuit-container').on('mousemove', function(event) {
+            if (!isConnectionMode || !connectionStart) return;
+            
+            const tempLine = d3.select('.temp-connection');
+            if (tempLine.empty()) return;
+
+            const startComponent = d3.select(`#${connectionStart.component}`);
+            if (startComponent.empty()) return;
+
+            const startTerminal = terminalOffsets[circuitData.components.find(c => c.id === connectionStart.component)?.type || 'Resistor'][connectionStart.terminal];
+            const startX = componentPositions[connectionStart.component].x + startTerminal.x;
+            const startY = componentPositions[connectionStart.component].y + startTerminal.y;
+
+            tempLine
+                .attr('x1', startX)
+                .attr('y1', startY)
+                .attr('x2', event.offsetX)
+                .attr('y2', event.offsetY);
+        });
+
+        // Update connection mode visuals
+        function updateConnectionModeVisuals() {
+            if (isConnectionMode) {
+                d3.selectAll('.terminal')
+                    .style('cursor', 'pointer')
+                    .style('stroke', '#ffeb3b')
+                    .style('stroke-width', '2');
+            } else {
+                d3.selectAll('.terminal')
+                    .style('cursor', 'default')
+                    .style('stroke', 'none')
+                    .style('stroke-width', '0');
+                // Remove temporary connection line
+                d3.selectAll('.temp-connection').remove();
+                // Reset any highlighted terminals
+                d3.selectAll('.terminal')
+                    .attr('fill', '#666')
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', '0');
+            }
+        }
+
+        // Remove mode button logic
+        const removeBtn = document.getElementById('remove-mode');
+        removeBtn.addEventListener('click', function() {
+            deactivateAllModes();
+            isRemoveMode = true;
+            this.style.backgroundColor = '#ff4444';
+            updateRemoveModeVisuals();
+        });
+
+        function updateRemoveModeVisuals() {
+            if (isRemoveMode) {
+                d3.selectAll('.component').style('cursor', 'pointer').on('click.remove', function(event, d) {
+                    const id = d3.select(this).attr('id');
+                    removeComponentById(id);
+                    event.stopPropagation();
+                });
+                d3.selectAll('.connection').style('cursor', 'pointer').on('click.remove', function(event, d) {
+                    const idx = d3.select(this).attr('data-connection-idx');
+                    removeConnectionByIdx(idx);
+                    event.stopPropagation();
+                });
+            } else {
+                d3.selectAll('.component').style('cursor', null).on('click.remove', null);
+                d3.selectAll('.connection').style('cursor', null).on('click.remove', null);
+            }
+        }
+
+        function removeComponentById(id) {
+            // Remove the component from the code editor DSL
+            const code = document.getElementById('code-editor');
+            const lines = code.value.split('\n');
+            const newLines = lines.filter(line => !line.trim().startsWith(id + '(') && !line.trim().includes(' ' + id + '('));
+            // Also remove any connections involving this component
+            const filteredLines = newLines.filter(line => {
+                if (line.trim().startsWith('Connect(')) {
+                    return !(line.includes(id + '.'));
+                }
+                return true;
+            });
+            code.value = filteredLines.join('\n');
+            document.getElementById('render-btn').click();
+        }
+
+        function removeConnectionByIdx(idx) {
+            // Remove the connection from the code editor DSL
+            const code = document.getElementById('code-editor');
+            let lines = code.value.split('\n');
+            let connectLines = lines.filter(line => line.trim().startsWith('Connect('));
+            let otherLines = lines.filter(line => !line.trim().startsWith('Connect('));
+            connectLines.splice(idx, 1);
+            code.value = otherLines.concat(connectLines).join('\n');
+            document.getElementById('render-btn').click();
+        }
+
+        // Helper to deactivate all modes
+        function deactivateAllModes() {
+            // Remove highlights
+            document.getElementById('add-component').style.backgroundColor = '';
+            document.getElementById('add-connection').style.backgroundColor = '';
+            document.getElementById('remove-mode').style.backgroundColor = '';
+            // Make sure the new Render and Simulate buttons are also reset
+            document.getElementById('render-btn').style.backgroundColor = '';
+            document.getElementById('simulate-btn').style.backgroundColor = '';
+            // Close modals
+            closeComponentModal();
+            // Reset modes
+            isConnectionMode = false;
+            isRemoveMode = false;
+            updateConnectionModeVisuals();
+            updateRemoveModeVisuals();
+        }
+
+        // Add Component button
+        const addComponentBtn = document.getElementById('add-component');
+        addComponentBtn.addEventListener('click', function() {
+            deactivateAllModes();
+            this.style.backgroundColor = '#90caf9';
+            showComponentModal();
+        });
+
+        // Add Connection button
+        const addConnectionBtn = document.getElementById('add-connection');
+        addConnectionBtn.addEventListener('click', function() {
+            deactivateAllModes();
+            isConnectionMode = true;
+            this.style.backgroundColor = '#ffeb3b';
+            updateConnectionModeVisuals();
+        });
+
+        // Code and Render buttons (deactivate all modes on click)
+        document.getElementById('code-btn').addEventListener('click', deactivateAllModes);
+        document.getElementById('render-btn').addEventListener('click', deactivateAllModes);
+        document.getElementById('simulate-btn').addEventListener('click', deactivateAllModes);
+
+        // Line numbering and error highlight logic
+        function updateLineNumbers(errorLine = null) {
+            const textarea = document.getElementById('code-editor');
+            const lineNumbers = document.getElementById('line-numbers');
+            const lines = textarea.value.split('\n');
+            let html = '';
+            for (let i = 1; i <= lines.length; i++) {
+                html += `<div${errorLine === i ? ' style=\"background:#ffe0e0;color:#b71c1c;font-weight:bold;\"' : ''}>${i}</div>`;
+            }
+            lineNumbers.innerHTML = html;
+            // Sync scroll
+            lineNumbers.scrollTop = textarea.scrollTop;
+            // Remove previous highlight
+            textarea.classList.remove('highlight-error-line');
+            // Highlight error line in textarea (simulate by selecting the line)
+            if (errorLine) {
+                const linesArr = textarea.value.split('\n');
+                let start = 0;
+                for (let i = 0; i < errorLine - 1; i++) start += linesArr[i].length + 1;
+                textarea.setSelectionRange(start, start + linesArr[errorLine - 1].length);
+                textarea.focus();
+            }
+        }
+
+        document.getElementById('code-editor').addEventListener('input', function() {
+            updateLineNumbers();
+        });
+        document.getElementById('code-editor').addEventListener('scroll', function() {
+            document.getElementById('line-numbers').scrollTop = this.scrollTop;
+        });
+
+        // Add export functions
+        function exportAsPNG() {
+            const svgElement = d3.select("#circuit-container svg").node();
+
+            // Clone the SVG element to avoid modifying the displayed one
+            const clonedSvgElement = svgElement.cloneNode(true);
+            const svg = d3.select(clonedSvgElement);
+
+            // Embed CSS styles directly into the cloned SVG
+            const style = document.createElement('style');
+            style.textContent = `
+                .connection {
+                    stroke: #666;
+                    stroke-width: 2;
+                }
+                .component text {
+                    pointer-events: none;
+                }
+                .node-label {
+                    fill: #fff;
+                    stroke: #333;
+                    stroke-width: 2;
+                }
+                .node-text {
+                    font-size: 14px;
+                    text-anchor: middle;
+                    dominant-baseline: middle;
+                }
+                .terminal {
+                    fill: #666;
+                    stroke: none;
+                    stroke-width: 0;
+                }
+                .node-group .drag-hitbox {
+                    fill: transparent;
+                }
+                .subcircuit rect {
+                    fill: #f8f8ff;
+                    stroke: #333;
+                    stroke-width: 2;
+                }
+                /* Add any other crucial SVG related styles here */
+            `;
+            // Append the style element directly, avoiding createElementNS which can add xmlns attribute
+            clonedSvgElement.appendChild(style);
+
+            // Add white background
+            const backgroundRect = svg.insert("rect", ":first-child")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", width) // Use the SVG width variable
+                .attr("height", height) // Use the SVG height variable
+                .attr("fill", "white");
+
+            const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
+            
+            // Log SVG data for debugging
+            console.log("SVG data for PNG export:", svgData);
+
+            // Encode SVG data more robustly
+            const svgBlob = new Blob([svgData], {type: "image/svg+xml;charset=utf-8"});
+            const url = URL.createObjectURL(svgBlob);
+
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            
+            const img = new Image();
+            img.onload = function() {
+                // Ensure canvas matches SVG dimensions
+                canvas.width = svgElement.viewBox.baseVal.width || width;
+                canvas.height = svgElement.viewBox.baseVal.height || height;
+                
+                ctx.drawImage(img, 0, 0);
+                const pngFile = canvas.toDataURL("image/png");
+                
+                // Create download link
+                const downloadLink = document.createElement("a");
+                downloadLink.download = "circuit.png";
+                downloadLink.href = pngFile;
+                downloadLink.click();
+
+                // Revoke the URL to release memory
+                URL.revokeObjectURL(url);
+
+                // Remove the temporary background rectangle from the cloned SVG
+                backgroundRect.remove();
+            };
+            img.src = url;
+        }
+        
+        function exportCode() {
+            const code = document.getElementById("code-editor").value;
+            const blob = new Blob([code], { type: "text/plain" });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "circuit.dsl";
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+        
+        // Add event listeners for export buttons
+        document.getElementById("export-png-btn").addEventListener("click", exportAsPNG);
+        document.getElementById("export-code-btn").addEventListener("click", exportCode);
     </script>
 </body>
 </html> 

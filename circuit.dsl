@@ -4,8 +4,8 @@ Capacitor    C1(100 uF);
 
 Connect(V1.positive, R1.positive);
 Connect(R1.negative, C1.positive);
-Connect(C1.negative, V1.negative, ground);
-
-Simulate {
-  dc;
-};
+Connect(C1.negative, ground);
+Connect(V1.negative, ground);
+Simulate
+{
+dc;}
