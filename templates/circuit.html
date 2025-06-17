@@ -223,6 +223,8 @@
     <div class="toolbar" style="margin-bottom: 0;">
         <button id="render-btn">Render</button>
         <button id="simulate-btn">Simulate</button>
+        <button id="rotate-mode">⟳ Rotate</button>
+        <button id="add-node-mode" title="Add Node" style="font-size: 18px;">● Add Node</button>
     </div>
     <div style="display: flex; gap: 0; align-items: flex-start; width: 100%;">
         <div style="flex: 1; min-width: 0; display: flex; align-items: stretch; position: relative;">
@@ -352,6 +354,10 @@ Simulate { dc; };
         let nodePositions = {};
         let subcircuitPositions = {};
         const gridSize = 20;
+        let nodeCounter = 1;
+        let extraNodes = {}; // { nodeName: {x, y} }
+        let componentRotations = {}; // { componentId: angle }
+        let pendingNodeConnection = null; // { nodeName: string, x: number, y: number }
 
         // Terminal offsets for each component type
         const terminalOffsets = {
@@ -362,6 +368,12 @@ Simulate { dc; };
             'Inductor': { positive: {x: -40, y: 0}, negative: {x: 40, y: 0} },
             'CurrentSource': { positive: {x: -40, y: 0}, negative: {x: 40, y: 0} }
         };
+
+        // --- Add after mode variables ---
+        let isRotateMode = false;
+        let isAddNodeMode = false;
+        let rotateModeBtn = document.getElementById('rotate-mode');
+        let addNodeModeBtn = document.getElementById('add-node-mode');
 
         function clearCircuit() {
             d3.select('#circuit-container').selectAll('*').remove();
@@ -378,14 +390,99 @@ Simulate { dc; };
                 .attr('width', width)
                 .attr('height', height);
 
-            // Draw nodes at their positions
-            nodePositions = {};
+            function removeNodeAndRerender(node) {
+                if (extraNodes[node]) {
+                    delete extraNodes[node];
+                    renderCircuit(circuitData);
+                }
+            }
+
+            function drawNode(node, x, y) {
+                const g = svg.append('g')
+                    .attr('class', 'node-group')
+                    .attr('id', `node-${node}`)
+                    .attr('transform', `translate(${x},${y})`)
+                    .style('pointer-events', 'all');
+                const nodeCircle = g.append('circle')
+                    .attr('r', 6)
+                    .attr('fill', '#555')
+                    .attr('stroke', isConnectionMode ? '#ffeb3b' : 'none')
+                    .attr('stroke-width', isConnectionMode ? 3 : 0)
+                    .style('pointer-events', 'all');
+                const nodeText = g.append('text')
+                    .attr('y', 18)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', 13)
+                    .attr('fill', '#333')
+                    .text(node)
+                    .style('pointer-events', 'none');
+                nodePositions[node] = {x, y};
+                g.call(d3.drag()
+                    .on('start', function(event) { d3.select(this).raise(); })
+                    .on('drag', function(event) {
+                        let snappedX = Math.round(event.x / gridSize) * gridSize;
+                        let snappedY = Math.round(event.y / gridSize) * gridSize;
+                        d3.select(this).attr('transform', `translate(${snappedX},${snappedY})`);
+                        nodePositions[node] = {x: snappedX, y: snappedY};
+                        if (extraNodes[node]) { extraNodes[node] = {x: snappedX, y: snappedY}; }
+                        updateConnections();
+                    })
+                );
+                if (isRemoveMode) {
+                    g.style('cursor', 'pointer').on('click.removenode', function(event) {
+                        removeNodeAndRerender(node);
+                        event.stopPropagation();
+                    });
+                    nodeCircle.style('cursor', 'pointer').on('click.removenode', function(event) {
+                        removeNodeAndRerender(node);
+                        event.stopPropagation();
+                    });
+                } else {
+                    g.on('click.removenode', null).style('cursor', null);
+                    nodeCircle.on('click.removenode', null).style('cursor', null);
+                }
+                if (isConnectionMode) {
+                    g.raise();
+                    g.style('cursor', 'pointer');
+                    nodeCircle.style('cursor', 'pointer');
+                    g.on('click.connectnode', function(event) {
+                        if (!connectionStart) {
+                            connectionStart = { node };
+                            nodeCircle.attr('stroke', '#ff0000').attr('stroke-width', 3);
+                        } else {
+                            let code = document.getElementById('code-editor');
+                            let newLine;
+                            if (connectionStart.node) {
+                                newLine = `Connect(${connectionStart.node}, ${node});`;
+                            } else {
+                                newLine = `Connect(${connectionStart.component}.${connectionStart.terminal}, ${node});`;
+                            }
+                            code.value = code.value + '\n' + newLine;
+                            document.getElementById('render-btn').click();
+                            isConnectionMode = false;
+                            document.getElementById('add-connection').style.backgroundColor = '';
+                            connectionStart = null;
+                        }
+                        event.stopPropagation();
+                    });
+                } else {
+                    g.on('click.connectnode', null).style('cursor', null);
+                    nodeCircle.style('cursor', null);
+                }
+            }
+
+            // Draw backend nodes
             if (data.nodes) {
                 Object.entries(data.nodes).forEach(([node, pos]) => {
                     drawNode(node, pos.x, pos.y);
-                    nodePositions[node] = {x: pos.x, y: pos.y};
                 });
             }
+            // Draw extra nodes
+            Object.entries(extraNodes).forEach(([node, pos]) => {
+                if (!nodePositions[node]) {
+                    drawNode(node, pos.x, pos.y);
+                }
+            });
 
             // Draw subcircuit rectangles with pins
             subcircuitPositions = {};
@@ -475,90 +572,6 @@ Simulate { dc; };
                     .attr('points', '0,-15 5,-5 -5,-5')
                     .attr('fill', 'black');
             }
-            function drawNode(node, x, y) {
-                const g = svg.append('g')
-                    .attr('class', 'node-group')
-                    .attr('id', `node-${node}`)
-                    .attr('transform', `translate(${x},${y})`);
-
-                // Large invisible hitbox for easy dragging
-                g.append('circle')
-                    .attr('r', 28)
-                    .attr('fill', 'transparent')
-                    .attr('class', 'drag-hitbox');
-
-                if (node.toLowerCase() === 'ground') {
-                    // Draw ground symbol
-                    g.append('circle')
-                        .attr('r', 16)
-                        .attr('fill', '#fff')
-                        .attr('stroke', '#333')
-                        .attr('stroke-width', 2);
-                    // Ground SVG symbol
-                    g.append('line')
-                        .attr('x1', 0)
-                        .attr('y1', 8)
-                        .attr('x2', 0)
-                        .attr('y2', 18)
-                        .attr('stroke', '#333')
-                        .attr('stroke-width', 2);
-                    g.append('line')
-                        .attr('x1', -8)
-                        .attr('y1', 18)
-                        .attr('x2', 8)
-                        .attr('y2', 18)
-                        .attr('stroke', '#333')
-                        .attr('stroke-width', 2);
-                    g.append('line')
-                        .attr('x1', -5)
-                        .attr('y1', 21)
-                        .attr('x2', 5)
-                        .attr('y2', 21)
-                        .attr('stroke', '#333')
-                        .attr('stroke-width', 2);
-                    g.append('line')
-                        .attr('x1', -2)
-                        .attr('y1', 24)
-                        .attr('x2', 2)
-                        .attr('y2', 24)
-                        .attr('stroke', '#333')
-                        .attr('stroke-width', 2);
-                    g.append('text')
-                        .attr('class', 'node-text')
-                        .attr('y', -20)
-                        .attr('text-anchor', 'middle')
-                        .attr('font-size', 13)
-                        .attr('fill', '#333')
-                        .text('ground');
-                } else {
-                    g.append('circle')
-                        .attr('class', 'node-label')
-                        .attr('r', 18);
-                    g.append('text')
-                        .attr('class', 'node-text')
-                        .attr('y', 4)
-                        .text(node);
-                }
-
-                nodePositions[node] = {x, y};
-
-                g.call(d3.drag()
-                    .on('start', function(event) {
-                        d3.select(this).raise();
-                    })
-                    .on('drag', function(event) {
-                        // Snap to grid
-                        let snappedX = Math.round(event.x / gridSize) * gridSize;
-                        let snappedY = Math.round(event.y / gridSize) * gridSize;
-                        d3.select(this).attr('transform', `translate(${snappedX},${snappedY})`);
-                        nodePositions[node] = {x: snappedX, y: snappedY};
-                        updateConnections();
-                    })
-                    .on('end', function(event) {
-                        // Optionally, add any end-of-drag logic here
-                    })
-                );
-            }
             function drawSubcircuit(subckt) {
                 const g = svg.append('g')
                     .attr('class', 'subcircuit')
@@ -615,7 +628,7 @@ Simulate { dc; };
                 const g = svg.append('g')
                     .attr('class', 'component')
                     .attr('id', component.id)
-                    .attr('transform', `translate(${component.position.x}, ${component.position.y})`);
+                    .attr('transform', `translate(${component.position.x}, ${component.position.y}) rotate(${componentRotations[component.id] || 0})`);
 
                 // Add a large invisible hitbox for easier dragging
                 g.append('rect')
@@ -684,6 +697,17 @@ Simulate { dc; };
                         .attr('fill', '#666')
                         .on('click', () => handleComponentClick(component.id, term));
                 });
+
+                // --- Add to drawComponent (inside renderCircuit) ---
+                if (isRotateMode) {
+                    g.style('cursor', 'pointer').on('click.rotate', function(event) {
+                        componentRotations[component.id] = ((componentRotations[component.id] || 0) + 90) % 360;
+                        renderCircuit(data); // re-render to apply rotation
+                        event.stopPropagation();
+                    });
+                } else {
+                    g.on('click.rotate', null).style('cursor', null);
+                }
             }
             function drawConnection(connection, idx) {
                 // If endpoint is a subcircuit pin, draw to the pin position
@@ -1086,27 +1110,30 @@ Simulate { dc; };
 
         document.getElementById('add-component').addEventListener('click', showComponentModal);
 
-        document.getElementById('add-connection').addEventListener('click', function() {
-            isConnectionMode = !isConnectionMode;
-            this.style.backgroundColor = isConnectionMode ? '#ffeb3b' : '';
-            if (!isConnectionMode) {
+        const addConnectionBtn = document.getElementById('add-connection');
+        addConnectionBtn.addEventListener('click', function() {
+            if (isConnectionMode) {
+                // Toggle off
+                isConnectionMode = false;
+                this.style.backgroundColor = '';
+                updateConnectionModeVisuals();
                 connectionStart = null;
+            } else {
+                deactivateAllModes();
+                isConnectionMode = true;
+                this.style.backgroundColor = '#ffeb3b';
+                updateConnectionModeVisuals();
             }
-            updateConnectionModeVisuals();
         });
 
         function handleComponentClick(component, terminal) {
             if (!isConnectionMode) return;
-
             if (!connectionStart) {
                 connectionStart = { component, terminal };
-                // Highlight the selected terminal
                 d3.select(`#${component}`).select(`.terminal[data-terminal="${terminal}"]`)
                     .attr('fill', '#ffeb3b')
                     .attr('stroke', '#ff0000')
                     .attr('stroke-width', '2');
-                
-                // Add a temporary line to show potential connection
                 const svg = d3.select('#circuit-container svg');
                 svg.append('line')
                     .attr('class', 'temp-connection')
@@ -1114,14 +1141,19 @@ Simulate { dc; };
                     .attr('stroke-width', '2')
                     .attr('stroke-dasharray', '5,5');
             } else {
-                // Don't allow connecting to the same component
-                if (connectionStart.component === component) {
-                    alert("Cannot connect a component to itself!");
-                    return;
+                let code = document.getElementById('code-editor');
+                let newLine;
+                if (connectionStart.node) {
+                    // Node to component terminal
+                    newLine = `Connect(${connectionStart.node}, ${component}.${terminal});`;
+                } else {
+                    // Component terminal to component terminal
+                    if (connectionStart.component === component) {
+                        alert("Cannot connect a component to itself!");
+                        return;
+                    }
+                    newLine = `Connect(${connectionStart.component}.${connectionStart.terminal}, ${component}.${terminal});`;
                 }
-                
-                const code = document.getElementById('code-editor');
-                const newLine = `Connect(${connectionStart.component}.${connectionStart.terminal}, ${component}.${terminal});`;
                 code.value = code.value + '\n' + newLine;
                 document.getElementById('render-btn').click();
                 isConnectionMode = false;
@@ -1176,10 +1208,17 @@ Simulate { dc; };
         // Remove mode button logic
         const removeBtn = document.getElementById('remove-mode');
         removeBtn.addEventListener('click', function() {
-            deactivateAllModes();
-            isRemoveMode = true;
-            this.style.backgroundColor = '#ff4444';
-            updateRemoveModeVisuals();
+            if (isRemoveMode) {
+                // Toggle off
+                isRemoveMode = false;
+                this.style.backgroundColor = '';
+                updateRemoveModeVisuals();
+            } else {
+                deactivateAllModes();
+                isRemoveMode = true;
+                this.style.backgroundColor = '#ff4444';
+                updateRemoveModeVisuals();
+            }
         });
 
         function updateRemoveModeVisuals() {
@@ -1214,6 +1253,7 @@ Simulate { dc; };
             });
             code.value = filteredLines.join('\n');
             document.getElementById('render-btn').click();
+            d3.select('#component-details').style('display', 'none');
         }
 
         function removeConnectionByIdx(idx) {
@@ -1243,6 +1283,10 @@ Simulate { dc; };
             isRemoveMode = false;
             updateConnectionModeVisuals();
             updateRemoveModeVisuals();
+            isRotateMode = false;
+            isAddNodeMode = false;
+            rotateModeBtn.style.backgroundColor = '';
+            addNodeModeBtn.style.backgroundColor = '';
         }
 
         // Add Component button
@@ -1253,13 +1297,28 @@ Simulate { dc; };
             showComponentModal();
         });
 
-        // Add Connection button
-        const addConnectionBtn = document.getElementById('add-connection');
-        addConnectionBtn.addEventListener('click', function() {
-            deactivateAllModes();
-            isConnectionMode = true;
-            this.style.backgroundColor = '#ffeb3b';
-            updateConnectionModeVisuals();
+        // Rotate mode button logic
+        rotateModeBtn.addEventListener('click', function() {
+            if (isRotateMode) {
+                isRotateMode = false;
+                this.style.backgroundColor = '';
+            } else {
+                deactivateAllModes();
+                isRotateMode = true;
+                this.style.backgroundColor = '#b0c4ee';
+            }
+        });
+
+        // Add Node mode button logic
+        addNodeModeBtn.addEventListener('click', function() {
+            if (isAddNodeMode) {
+                isAddNodeMode = false;
+                this.style.backgroundColor = '';
+            } else {
+                deactivateAllModes();
+                isAddNodeMode = true;
+                this.style.backgroundColor = '#b0c4ee';
+            }
         });
 
         // Code and Render buttons (deactivate all modes on click)
@@ -1402,6 +1461,18 @@ Simulate { dc; };
         // Add event listeners for export buttons
         document.getElementById("export-png-btn").addEventListener("click", exportAsPNG);
         document.getElementById("export-code-btn").addEventListener("click", exportCode);
+
+        // --- Add to SVG/canvas click handler (after renderCircuit) ---
+        d3.select('#circuit-container').on('click.addnode', function(event) {
+            if (!isAddNodeMode) return;
+            // Use event.offsetX and event.offsetY directly for precise placement
+            let nodeName = `node${nodeCounter}`;
+            nodeCounter++;
+            extraNodes[nodeName] = {x: event.offsetX, y: event.offsetY};
+            renderCircuit(circuitData);
+            isAddNodeMode = false;
+            addNodeModeBtn.style.backgroundColor = '';
+        });
     </script>
 </body>
 </html> 
